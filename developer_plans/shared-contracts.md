@@ -66,6 +66,16 @@ Behavior:
 
 ## 4. Contract Chain
 
+> **Doc reconciliation — resolves TECHNICAL_DOCUMENT.md §8 vs §12.2 (the §8 shapes win):**
+> 1. **Create carries no inline context.** `POST /api/runs` takes only the fields in C1 below — **no**
+>    `chatHistoryMessages`/`mediaArtifacts` in the create body. Slack messages and files arrive via the
+>    separate `POST /api/runs/{runId}/context` and `POST /api/runs/{runId}/media` endpoints. (§12.2's
+>    inline-create payload is superseded.)
+> 2. **`evidenceSummary` is `object[]`** `{ kind, mediaArtifactId?, summary }` (see C2), **not** `string[]`.
+>
+> Confirmed against the built backend: `lib/insforge/types.ts` (`RunCreateInput`, `EvidenceSummaryItem`)
+> + the live `context`/`media` routes. Laurence's Slack slice (#6) is already aligned to this.
+
 ### C1: `RunCreateInput`
 
 Laurence creates runs from Slack commands; Yash persists them.
