@@ -4,18 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { startCapture, type CaptureController, type CaptureEvent } from "@/lib/capture/instrument";
 import type { ReportDraft } from "@/lib/insforge/types";
 
-type Phase = "setup" | "capturing" | "uploading" | "drafting" | "draft" | "working" | "done";
-
-interface DiagnoseResult {
-  symptom: string;
-  roleLens: string;
-  hypotheses: Array<{ id: string; title: string; confidence: number; reproductionPlan: string; expectedFailure: string }>;
-  grounding: Array<{ filePath: string; line: number; anchor: string }>;
-  dispatch: unknown[];
-}
+type Phase = "setup" | "capturing" | "uploading" | "drafting" | "draft";
 
 // We always debug our own project; the seeded bug lives at this route. Hardcode it so the recorder
-// just embeds + instruments it (console/network/clicks) with no URL entry.
+// instruments it (console/network/clicks) with no URL entry. Capture-only: after Done it stores the
+// capture + drafts the report; confirmation happens back in Slack (both report and record paths
+// confirm there), which kicks off diagnose + dispatch.
 const TARGET = "/test-fixtures/reports";
 
 export default function DebugRecorder({ params }: { params: { runId: string } }) {
@@ -29,7 +23,6 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
   const [error, setError] = useState<string | null>(null);
   const [instrumented, setInstrumented] = useState(false);
   const [draft, setDraft] = useState<ReportDraft | null>(null);
-  const [diagnosis, setDiagnosis] = useState<DiagnoseResult | null>(null);
 
   const targetWinRef = useRef<Window | null>(null);
   const captureRef = useRef<CaptureController | null>(null);
@@ -171,31 +164,12 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
     }
   }, [events, notes, transcript, runId]);
 
-  const confirmAndDiagnose = useCallback(async () => {
-    setPhase("working");
-    try {
-      const c = await fetch(`/api/runs/${runId}/confirm-bug-brief`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bugBriefId: draft?.bugBriefId, confirmedBy: "recorder" }),
-      });
-      if (!c.ok) throw new Error(`confirm failed: ${await c.text()}`);
-      // confirm cascades into diagnose + auto-dispatch to Luke; the diagnosis comes back here.
-      const cj = await c.json();
-      if (cj.diagnosis) setDiagnosis(cj.diagnosis as DiagnoseResult);
-      setPhase("done");
-    } catch (e) {
-      setError(String(e));
-      setPhase("draft");
-    }
-  }, [draft, runId]);
-
   return (
     <>
       <h1>Live debug recorder</h1>
       <p className="muted">
-        Run <code>{runId}</code> · reproduce the bug in the app below — Reflex captures clicks, network,
-        and errors into a timeline, then diagnoses + grounds it in the repo.
+        Run <code>{runId}</code> · reproduce the bug — Reflex captures clicks, network, and errors into
+        a timeline. Confirm the report in your Slack thread to start diagnosis + the fix.
       </p>
       {error && <div className="panel" style={{ borderColor: "var(--bad)" }}>{error}</div>}
 
@@ -211,7 +185,7 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
           <button onClick={openTarget} style={{ marginTop: 12 }}>Open the app &amp; start capturing →</button>
         ) : (
           <p className="muted" style={{ marginTop: 12 }}>
-            ● Capturing the opened window — reproduce the bug there (Export 50,000 rows), then return and click <strong>Done — diagnose</strong>.
+            ● Capturing the opened window — reproduce the bug there (Export 50,000 rows), then return and click <strong>Done</strong>.
           </p>
         )}
         <video ref={videoRef} muted playsInline style={{ display: recording ? "block" : "none", marginTop: 10 }} />
@@ -220,7 +194,10 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
           <span className="pill">{events.length} events</span>
           {recording && <span className="pill bad">● recording</span>}
           {framesRef.current.length > 0 && <span className="pill">{framesRef.current.length} frames</span>}
-          <button onClick={finish} disabled={events.length === 0 && !notes}>Done — diagnose</button>
+          <button onClick={finish}
+            disabled={(events.length === 0 && !notes) || phase === "uploading" || phase === "drafting"}>
+            {phase === "uploading" || phase === "drafting" ? "Sending…" : "Done — send to Reflex"}
+          </button>
         </div>
 
         <label htmlFor="notes">Notes</label>
@@ -252,36 +229,12 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
             <tr><th>Surface</th><td>{draft.affectedSurface}</td></tr>
             <tr><th>Evidence</th><td>{draft.evidenceSummary.map((e) => e.summary).join("; ") || "—"}</td></tr>
           </tbody></table>
-          {phase !== "done" && (
-            <div className="row" style={{ marginTop: 14 }}>
-              <button onClick={confirmAndDiagnose} disabled={phase === "working"}>
-                {phase === "working" ? "Working…" : "Confirm & diagnose"}
-              </button>
-              <a className="link" href={`/dashboard/${runId}`}>Open in dashboard</a>
-            </div>
-          )}
-        </div>
-      )}
-
-      {diagnosis && (
-        <div className="panel">
-          <h2>Diagnosis → ready for Replicas</h2>
-          <p><strong>Symptom:</strong> {diagnosis.symptom}</p>
-          <p className="muted">{diagnosis.roleLens}</p>
-          <table>
-            <thead><tr><th>Hypothesis</th><th>Conf.</th><th>Expected failure</th></tr></thead>
-            <tbody>
-              {diagnosis.hypotheses.map((h) => (
-                <tr key={h.id}><td>{h.title}</td><td>{Math.round(h.confidence * 100)}%</td><td className="muted">{h.expectedFailure}</td></tr>
-              ))}
-            </tbody>
-          </table>
-          {diagnosis.grounding.length > 0 && (
-            <p className="muted" style={{ marginTop: 8 }}>
-              Grounded in: {diagnosis.grounding.map((g) => `${g.filePath}:${g.line}`).slice(0, 4).join(", ")}
-            </p>
-          )}
-          <p className="muted">{diagnosis.dispatch.length} dispatch payload(s) handed to Luke. <a className="link" href={`/dashboard/${runId}`}>See run →</a></p>
+          <div className="panel" style={{ borderColor: "var(--accent)", marginTop: 14 }}>
+            ✅ Captured &amp; drafted. <strong>Confirm this report in your Slack thread</strong> to start
+            diagnosis and the fix — Reflex posts a Confirm / Edit message there. The diagnosis,
+            grounding, and Replicas dispatch run after you confirm in Slack.
+          </div>
+          <a className="link" href={`/dashboard/${runId}`}>Open in dashboard</a>
         </div>
       )}
     </>
