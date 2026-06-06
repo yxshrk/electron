@@ -1434,13 +1434,13 @@ The team should split by interface boundaries, not by page sections. Each person
 
 | Owner | Primary Scope | Must Deliver | Depends On |
 | --- | --- | --- | --- |
-| Yash | Slack attachment and debug recording capture UX | Screenshot/video/recording attachment flow, `/reflex-debug-mode` recorder page, upload-ready media payload | `/reflex-bug-mode`, `/reflex-debug-mode`, `POST /api/runs`, `POST /api/runs/{runId}/media`, and `POST /api/runs/{runId}/debug-capture` contracts |
-| Luke | Slack webhook/API, InsForge backend, clarification gate, orchestration state | `/api/slack/reflex-bug-mode`, `/api/slack/reflex-debug-mode`, chat context fetch, InsForge schema, intake package confirmation, state machine, Slack thread updates | InsForge and Slack credentials |
-| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Confirmed intake package and hypothesis contract |
+| Laurence | Slack front door | `/reflex-bug-mode`, `/reflex-debug-mode`, Slack context fetch, confirmation card, Slack thread status updates | Yash's run APIs and shared contracts |
+| Yash | InsForge backend, debug capture storage, report draft, diagnosis | `reflex_runs` schema, context/media/debug ingest, bug report draft, confirmed intake package, diagnosis, run status source of truth | InsForge credentials and Slack payloads from Laurence |
+| Luke | Replicas dispatch, reproduction, fix, and PR | Scripted fallback PR, Replicas dispatch route, evidence payload, GitHub PR output | Confirmed intake package and hypothesis from Yash |
 
 ### 12.2 Workstream Contracts
 
-Yash to Luke:
+Laurence to Yash:
 
 ```json
 {
@@ -1448,7 +1448,7 @@ Yash to Luke:
   "mode": "bug",
   "role": "sales_csm",
   "repoUrl": "https://github.com/yxshrk/electron",
-  "transcript": "Customer says export hangs on large reports.",
+  "commandText": "",
   "chatHistoryMessages": [
     {
       "slackMessageTs": "1710000000.000100",
@@ -1472,7 +1472,27 @@ Yash to Luke:
 }
 ```
 
-Luke to Laurence:
+Yash to Laurence:
+
+```json
+{
+  "runId": "run_export_hang_01",
+  "bugBriefId": "brief_run_export_hang_01",
+  "status": "needs_confirmation",
+  "whereItHappens": "Report export screen",
+  "actualBehavior": "When the user exports a large report, the frontend hangs or crashes.",
+  "expectedBehavior": "The report export should complete or show progress without crashing.",
+  "affectedSurface": "frontend",
+  "evidenceSummary": [
+    "Video shows export click, loading spinner, and frontend crash.",
+    "Screenshot shows report export stuck in loading state."
+  ],
+  "missingInfo": [],
+  "agentPromptPreview": "Investigate the report export flow. Confirm whether the frontend export handler blocks, crashes, or waits on an unbounded backend response before changing code."
+}
+```
+
+Yash to Luke:
 
 ```json
 {
@@ -1508,7 +1528,7 @@ Luke to Laurence:
 }
 ```
 
-Laurence to Luke:
+Luke to Yash:
 
 ```json
 {
@@ -1545,35 +1565,34 @@ Slack should never infer progress locally. Each thread update should come from t
 
 ### 12.4 Build Order for Three People
 
-1. Luke creates the Slack app endpoint, InsForge connection, schema, and `POST /api/runs`.
-2. Luke adds Slack chat history fetch, attachment metadata fetch, and `POST /api/runs/{runId}/context`.
-3. Yash validates the screenshot or recording attachment flow in Slack, including Add Attachment before confirmation.
-4. Yash adds the optional `/reflex-debug-mode` recorder page and `POST /api/runs/{runId}/debug-capture`.
-5. Laurence creates the seeded bug path and a local script or API utility that can produce a PR from a known fix.
-6. Luke adds `POST /api/runs/{runId}/draft-bug-brief`, `POST /api/slack/interactions`, `POST /api/runs/{runId}/confirm-bug-brief`, and `POST /api/runs/{runId}/intake-package`.
-7. Luke adds `POST /api/runs/{runId}/diagnose` from the confirmed intake package.
-8. Luke and Laurence connect `POST /api/runs/{runId}/dispatch-replicas` to the reproduction/fix/PR path.
-9. Luke posts run status updates back to the Slack bot update thread.
-10. Everyone rehearses the same script three times and removes any live dependency that flakes.
+1. Yash creates the InsForge schema, typed contracts, and `POST /api/runs`.
+2. Laurence creates the Slack app, `/reflex-bug-mode`, `/reflex-debug-mode`, and Slack interactions against mocked run APIs.
+3. Yash adds Slack context ingest, media ingest, debug capture ingest, and `POST /api/runs/{runId}/draft-bug-brief`.
+4. Laurence wires the confirmation card: Confirm, Edit Report, and Add Attachment.
+5. Yash adds `POST /api/runs/{runId}/confirm-bug-brief`, `POST /api/runs/{runId}/intake-package`, and `POST /api/runs/{runId}/diagnose`.
+6. Luke creates the seeded bug path and scripted fallback that can produce a PR from a known fix.
+7. Luke connects `POST /api/runs/{runId}/dispatch-replicas` and `POST /api/replicas/callback`.
+8. Laurence wires Slack thread updates to `reflex_runs.status` through the run event stream or polling.
+9. Everyone rehearses `/reflex-bug-mode` first, then adds `/reflex-debug-mode` only if the core spine is reliable.
 
 ### 12.5 Demo Ownership
 
 | Demo Moment | Owner | Fallback |
 | --- | --- | --- |
-| Slack bug-mode command and attachment | Yash / Luke | Use a static Slack message and screenshot URL |
-| Debug-mode recording | Yash | Use a pre-recorded video uploaded as a media artifact |
-| Run creation and persistence | Luke | Use seeded run row in InsForge |
-| Bug report confirmation | Luke | Use a prefilled report and click Confirm |
-| Confirmed intake package | Luke | Use seeded chat history and attachment records in InsForge |
-| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis from the confirmed package |
-| Reproduction and fix evidence | Laurence | Use precomputed logs and seeded patch |
-| GitHub PR output | Laurence | Use an already-open demo PR link |
-| Final pipeline walkthrough | Luke | Walk through Slack bot update thread updates and stored InsForge run states |
+| Slack bug-mode command and attachment | Laurence | Use a static Slack message and screenshot URL |
+| Slack debug-mode command and recorder link | Laurence / Yash | Use a pre-recorded video uploaded as a media artifact |
+| Run creation and persistence | Yash | Use seeded run row in InsForge |
+| Bug report confirmation | Laurence / Yash | Use a prefilled report and click Confirm |
+| Confirmed intake package | Yash | Use seeded chat history and attachment records in InsForge |
+| Diagnosis and hypothesis tree | Yash | Use deterministic hardcoded diagnosis from the confirmed package |
+| Reproduction and fix evidence | Luke | Use precomputed logs and seeded patch |
+| GitHub PR output | Luke | Use an already-open demo PR link |
+| Final pipeline walkthrough | Laurence | Walk through Slack bot update thread updates and stored InsForge run states |
 
 ### 12.6 Missing Decisions
 
-- Which exact repository contains the seeded demo bug?
-- Is the primary demo input a Slack screenshot attachment, a recording attachment, or both?
+- Has the seeded export-hang bug been committed to `https://github.com/yxshrk/electron` with a deterministic failing repro?
+- Is the primary demo input a Slack screenshot attachment, a recording attachment, or just fetched Slack history?
 - Which fields are mandatory in the bug report before diagnosis: actual behavior, expected behavior, affected surface, and location?
 - Which model path generates the diagnosis JSON: InsForge Model Gateway or a direct model API?
 - What GitHub token can create branches and PRs for the demo repo?

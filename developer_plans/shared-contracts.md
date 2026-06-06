@@ -1,308 +1,237 @@
-# Reflex — Shared Contracts (the anti-collision spec)
+# Reflex Shared Contracts
 
-> **This is the single source of truth for every interface that crosses a person boundary.**
-> If you are about to invent a field name, a route, a status string, a table column, or an env
-> var that another person will touch, it goes **here first**, then into your plan. Changing a
-> contract is a one-line Slack message to the other two owners, not a silent edit.
->
-> Anchored to [`../TECHNICAL_DOCUMENT.md`](../TECHNICAL_DOCUMENT.md) (canonical architecture) and
-> the verified API research in `STACK_RESEARCH.md` (on branch `laurence/replicas-dispatch`).
+This is the anti-collision spec for the three workstreams. It is aligned with
+[`../TECHNICAL_DOCUMENT.md`](../TECHNICAL_DOCUMENT.md).
 
----
+## 1. Canonical Names
 
-## 0. The three vertical slices
+| Concept | Use | Do Not Use |
+| --- | --- | --- |
+| One Reflex run | `runId`, `reflex_runs` | `sessionId`, `capture_sessions` |
+| User-facing summary | `bug report` | long ticket form |
+| Confirmed backend bundle | `intakePackageId`, `intake_packages` | raw prompt-only context |
+| Slack bug entry | `/reflex-bug-mode` | `/reflex role:sales repo:...` |
+| Live reproduction entry | `/reflex-debug-mode` | replacing bug mode |
 
-We split by **interface boundary**, not by page (per TECHNICAL_DOCUMENT.md §12). Each person owns
-one vertical with one input contract and one output contract.
+Both entry points must converge into one confirmed intake package before diagnosis, dispatch, or PR
+work starts.
 
-```text
-  ┌──────────────────────┐    ┌────────────────────────────────┐    ┌───────────────────────────┐
-  │  LAURENCE — Slack     │    │  YASH — InsForge + Diagnosis   │    │  LUKE — Replicas + PR     │
-  │  (front door)         │    │  (brain + source of truth)     │    │  (hands)                  │
-  ├──────────────────────┤    ├────────────────────────────────┤    ├───────────────────────────┤
-  │ /reflex slash cmd     │    │ InsForge schema + SDK client   │    │ agent/replicas/* scaffold │
-  │ attachments → storage │    │ ingest → observations          │    │ /api/.../dispatch-replicas│
-  │ thread status updates │    │ multimodal symptom extraction  │    │ /api/replicas/callback    │
-  │ confirm/edit buttons  │    │ draft bug brief + diagnose     │    │ reproduce in sandbox      │
-  │                       │    │ hypotheses + confirm loop      │    │ fix + open GitHub PR      │
-  └─────────┬────────────┘    └───────────┬────────────────────┘    └────────────┬──────────────┘
-            │  C1 IntakePayload            │  C3 DispatchInput                     │
-            ├────────────────────────────►│──────────────────────────────────────►│
-            │  C2 BriefDraft + StatusEvent │                                       │
-            │◄────────────────────────────┤◄──────────────────────────────────────┤
-                                              C4 EvidencePayload
-```
+## 2. State Machine
 
-The **InsForge database (Yash) is the shared source of truth.** Nobody infers pipeline state
-locally; everyone reads/writes the `capture_sessions.status` row. (TECHNICAL_DOCUMENT.md §12.3)
-
----
-
-## 1. Naming standardization (read this first to avoid churn)
-
-The repo currently has two architecture drafts with different nouns. **We standardize on the
-`main` branch + the existing code scaffold:**
-
-| Concept | Canonical name | Aliases you may see (do not use in new code) |
-|---|---|---|
-| A single bug report run | `capture_sessions` row, id = **`sessionId`** | `runs` / `runId` (slack-first draft) |
-| Media (screenshot/recording) | `observations` row | `media` (slack-first draft) |
-| Intake source value | `source: "slack" \| "web" \| "manual"` | — |
-
-Rationale: the merged `agent/replicas/types.ts` already ships `DispatchInput.sessionId` and
-`EvidencePayload.sessionId`. Aligning everyone to `sessionId` means **zero rename churn** when
-Luke's scaffold meets Yash's backend. If you need the Slack-first `runId` ergonomics, alias it in
-your own layer — never on the wire.
-
----
-
-## 2. State machine (owned by Yash, written by all)
-
-Stored on `capture_sessions.status`. Every transition is a DB write; the UI/Slack thread only ever
-renders the latest stored value. (TECHNICAL_DOCUMENT.md §12.3)
+Stored on `reflex_runs.status`.
 
 ```text
-created → observed → diagnosed → confirmed → dispatched → reproduced → fixed → shipped
+created -> context_stored -> clarifying -> report_drafted -> package_confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
 ```
 
-| Status | Set by | Meaning |
-|---|---|---|
-| `created` | Laurence | `/reflex` fired; session row exists |
-| `observed` | Laurence → Yash | transcript + media stored as observations |
-| `diagnosed` | Yash | symptom + hypotheses generated |
-| `confirmed` | Yash (on user confirm) | user approved the brief in Slack; safe to spend agent credits |
-| `dispatched` | Luke | Replicas task(s) started |
-| `reproduced` | Luke | sandbox proved the bug |
-| `fixed` | Luke | fix applied, tests pass in sandbox |
-| `shipped` | Luke | PR open, linked to session |
-
-**Failure states** (terminal; surface to Slack thread):
+Failure states:
 
 ```text
-diagnosis_failed   dispatch_failed   reproduction_failed   pr_failed
+clarification_failed
+diagnosis_failed
+dispatch_failed
+reproduction_failed
+pr_failed
 ```
 
-> The `confirmed` state is **new vs TECHNICAL_DOCUMENT.md §12.3** — it is the "confirm back to the
-> user" gate the user asked for, sitting between `diagnosed` and `dispatched`. Do not dispatch
-> Replicas (real credits) until `confirmed`.
+## 3. Commands
 
----
+### `/reflex-bug-mode`
 
-## 3. The contract chain
+Use when the bug already exists in Slack context.
 
-Four contracts cross boundaries. TS interfaces are authoritative; JSON is illustrative.
+Behavior:
 
-### C1 — `IntakePayload` (Laurence → Yash)
+- Create a `bug` run.
+- Fetch latest 100 channel messages as raw context candidates.
+- Fetch latest 3 nearby Slack attachments.
+- Store copied Slack context through `POST /api/runs/{runId}/context`.
+- Draft a report and ask the user to confirm, edit, or add attachments.
 
-The normalized report. Laurence converts a Slack command (or web form) into exactly this and
-`POST`s it to Yash's intake. Mirrors TECHNICAL_DOCUMENT.md §8 `POST /api/intake` + §12.2.
+### `/reflex-debug-mode`
+
+Use when a user is actively reproducing the issue.
+
+Behavior:
+
+- Create a `debug` run.
+- Return an Open Recorder link.
+- Browser recorder captures screen, audio, screenshots, notes, and optional transcript.
+- Store debug artifacts through `POST /api/runs/{runId}/debug-capture`.
+- Draft the same report and use the same confirmation flow.
+
+## 4. Contract Chain
+
+### C1: `RunCreateInput`
+
+Laurence creates runs from Slack commands; Yash persists them.
 
 ```ts
-interface IntakePayload {
+interface RunCreateInput {
   source: 'slack' | 'web' | 'manual';
-  role: 'sales' | 'ceo' | 'product' | 'engineer';   // drives the diagnostic lens (§5)
-  repoUrl: string;                                   // target repo, e.g. https://github.com/yxshrk/electron
-  transcript: string;                                // the user's raw words / Slack message text
-  media?: Array<{
-    kind: 'screenshot' | 'recording';
-    storageKey: string;                              // InsForge Storage key (Laurence uploaded it)
-    url?: string;                                    // signed/public URL if available
-    timestampMs?: number;
-  }>;
-  slackContext?: {                                   // present when source = 'slack'; Yash stores it so
-    channelId: string;                               // status updates can be routed back to the thread
-    threadTs: string;
-    userId: string;
+  mode: 'bug' | 'debug';
+  role: 'sales_csm' | 'ceo' | 'product' | 'engineer';
+  repoUrl: string;
+  commandText?: string;
+  slackChannelId?: string;
+  slackThreadTs?: string | null;
+  contextWindow: {
+    messageLimit: number;      // MVP default: 100
+    attachments: number;       // MVP default: 3
+    maxPromptChars: number;    // MVP default: 6000
   };
 }
 ```
 
-Returns: `{ "sessionId": "sess_123", "status": "created" }`.
-
-### C2 — `BugBriefDraft` + `StatusEvent` (Yash → Laurence)
-
-Two things flow back toward Slack:
-
-**(a) `BugBriefDraft`** — the compact, role-translated brief the user must confirm or edit before
-any credits are spent (TECHNICAL_DOCUMENT.md §5 example; slack-first "Bug Brief Builder").
+Returns:
 
 ```ts
-interface BugBriefDraft {
-  sessionId: string;
-  role: string;
-  symptom: string;                 // structured engineering symptom, e.g. "Report export hangs on large datasets"
-  evidence: string[];              // bullet points pulled from screen + transcript
-  hypotheses: Array<{ id: string; title: string; confidence: number }>;
-  needsConfirmation: true;         // Laurence renders Confirm / Edit buttons for this
+{ runId: string; status: 'created'; recordingUrl?: string }
+```
+
+### C2: `ReportDraft`
+
+Yash produces this after Slack context or debug artifacts are stored.
+
+```ts
+interface ReportDraft {
+  runId: string;
+  bugBriefId: string;
+  status: 'needs_confirmation';
+  whereItHappens: string;
+  actualBehavior: string;
+  expectedBehavior?: string;
+  reproductionContext?: string;
+  affectedSurface: 'frontend' | 'backend' | 'mobile' | 'infra' | 'unknown';
+  evidenceSummary: Array<{ kind: string; mediaArtifactId?: string; summary: string }>;
+  missingInfo: string[];
+  agentPromptPreview: string;
 }
 ```
 
-**(b) `StatusEvent`** — every pipeline transition, so Laurence can update the Slack thread (and the
-optional web dashboard). Delivered via InsForge Realtime channel `session:{sessionId}` **or**
-polled from `GET /api/sessions/{sessionId}`. Mirrors TECHNICAL_DOCUMENT.md §8 events.
+Slack renders Confirm, Edit Report, and Add Attachment actions from this shape.
+
+### C3: `IntakePackage`
+
+Created only after user confirmation.
 
 ```ts
-interface StatusEvent {
-  sessionId: string;
-  type: 'diagnosis.created' | 'brief.ready' | 'session.confirmed'
-      | 'agent.dispatched' | 'agent.reproduced' | 'agent.fixed' | 'pr.opened'
-      | `${'diagnosis'|'dispatch'|'reproduction'|'pr'}_failed`;
-  status: string;                  // the new capture_sessions.status
-  detail?: string;                 // human-readable line for the thread
-  prUrl?: string;                  // present on pr.opened
+interface IntakePackage {
+  runId: string;
+  intakePackageId: string;
+  bugBriefId: string;
+  confirmedReport: Record<string, unknown>;
+  chatHistoryMessageCount: number;
+  mediaArtifactCount: number;
+  debugArtifactCount: number;
+  status: 'confirmed';
 }
 ```
 
-### C3 — `DispatchInput` (Yash → Luke)
+Diagnosis and Replicas must consume the confirmed intake package, not an unconfirmed draft.
 
-**Already shipped** in `agent/replicas/types.ts`. One hypothesis at a time. Yash only emits this
-**after** `status = confirmed`. (TECHNICAL_DOCUMENT.md §12.2 "Luke→Laurence" block, re-pointed to
-Luke under the new split.)
+### C4: `DispatchInput`
+
+Yash sends this to Luke after `package_confirmed` and diagnosis.
 
 ```ts
 interface DispatchInput {
-  sessionId: string;
+  runId: string;
+  intakePackageId: string;
   repoUrl: string;
   role: string;
   symptom: string;
-  hypothesis: { id: string; title: string; reproductionPlan: string; expectedFailure: string };
-  environmentId?: string;          // pre-built Replicas Environment bound to the seeded repo
+  hypothesis: {
+    id: string;
+    title: string;
+    reproductionPlan: string;
+    expectedFailure: string;
+  };
 }
 ```
 
-### C4 — `EvidencePayload` (Luke → Yash)
+### C5: `EvidencePayload`
 
-**Already shipped** in `agent/replicas/types.ts`. The proof + PR. Yash persists it into
-`agent_runs` + `pull_requests` and flips `capture_sessions.status`.
+Luke returns this after Replicas or the scripted fallback produces evidence.
 
 ```ts
 interface EvidencePayload {
-  sessionId: string;
+  runId: string;
   hypothesisId: string;
-  status: 'shipped' | 'reproduced' | 'reproduction_failed' | 'pr_failed';
+  status: 'reproduced' | 'fixed' | 'shipped' | 'reproduction_failed' | 'pr_failed';
   rootCause: string;
   fixSummary: string;
-  verification: string;            // e.g. "Large export fixture completes under the demo timeout"
-  logsUrl: string;
-  prUrl: string;
+  verification: string;
+  logsUrl?: string;
+  prUrl?: string;
   provider: 'replicas' | 'scripted';
 }
 ```
 
----
-
-## 4. Database schema (owned by Yash)
-
-Canonical tables live in TECHNICAL_DOCUMENT.md §7 (`capture_sessions`, `observations`, `diagnoses`,
-`hypotheses`, `agent_runs`, `pull_requests`) + a `memory_nodes` table (pgvector) for the
-symptom→resolution graph (STACK_RESEARCH §3). **Only Yash writes migrations.** Read/write access by
-person:
-
-| Table | Laurence | Yash | Luke |
-|---|---|---|---|
-| `capture_sessions` | create + read | **own** (migrations, status writes) | status writes (dispatch→shipped) |
-| `observations` | insert (via intake) | **own** | read |
-| `diagnoses` | read | **own** | read |
-| `hypotheses` | read | **own** | status writes (per hypothesis) |
-| `agent_runs` | — | read | **own** (writes) |
-| `pull_requests` | read | read | **own** (writes) |
-| `memory_nodes` | — | **own** | read (optional) |
-
-If Luke or Laurence needs a column that doesn't exist, ask Yash — do **not** add an ad-hoc table.
-
----
-
-## 5. Storage bucket convention (created by Yash, written by Laurence)
-
-- Bucket: **`reflex-evidence`** (private), created by Yash in Phase 2.
-- Path convention: `sessions/{sessionId}/{kind}-{timestampMs}.{ext}`
-  - Laurence writes Slack attachments here → puts the returned `storageKey` into `IntakePayload.media[]`.
-  - Yash reads them during multimodal extraction.
-  - Luke writes reproduction artifacts here → `sessions/{sessionId}/runs/{runId}/...` and puts the
-    URL into `EvidencePayload.logsUrl`.
-
----
-
-## 6. Route ownership (anti-collision map)
+## 5. Route Ownership
 
 | Route | Owner | Purpose |
-|---|---|---|
-| `POST /api/slack/reflex-command` | Laurence | slash-command intake |
-| `POST /api/slack/events` | Laurence | attachment / message events |
-| `POST /api/slack/interactions` | Laurence | Confirm/Edit button clicks → calls Yash's confirm |
-| `POST /api/intake` | Yash | normalized intake (C1) → creates session |
-| `POST /api/sessions/{id}/observations` | Yash | store transcript + media |
-| `POST /api/sessions/{id}/diagnose` | Yash | produce symptom + hypotheses (C2 brief) |
-| `POST /api/sessions/{id}/confirm` | Yash | user approved brief → `status = confirmed` |
-| `GET  /api/sessions/{id}` | Yash | current state (Laurence polls if no realtime) |
-| `GET  /api/sessions/{id}/events` | Yash | SSE/realtime status stream (C2 StatusEvent) |
-| `POST /api/sessions/{id}/dispatch` | Luke | confirm → dispatch Replicas (consumes C3) |
-| `POST /api/replicas/callback` | Luke | Replicas webhook → writes evidence (C4) |
+| --- | --- | --- |
+| `POST /api/slack/reflex-bug-mode` | Laurence | Slack bug-mode command |
+| `POST /api/slack/reflex-debug-mode` | Laurence | Slack debug-mode command and recorder link |
+| `POST /api/slack/events` | Laurence | Slack file/message events |
+| `POST /api/slack/interactions` | Laurence | Confirm/Edit/Add Attachment actions |
+| `POST /api/runs` | Yash | Create `reflex_runs` row |
+| `POST /api/runs/{runId}/context` | Yash | Store copied Slack context candidates |
+| `POST /api/runs/{runId}/debug-capture` | Yash | Store recorder artifacts |
+| `POST /api/runs/{runId}/media` | Yash | Store media artifact metadata |
+| `POST /api/runs/{runId}/draft-bug-brief` | Yash | Generate confirmable report |
+| `POST /api/runs/{runId}/confirm-bug-brief` | Yash | Confirm report and create package |
+| `POST /api/runs/{runId}/intake-package` | Yash | Return confirmed intake package |
+| `POST /api/runs/{runId}/diagnose` | Yash | Generate symptom and hypotheses from package |
+| `POST /api/runs/{runId}/dispatch-replicas` | Luke | Dispatch confirmed hypothesis |
+| `POST /api/replicas/callback` | Luke | Persist Replicas/scripted evidence |
+| `GET /api/runs/{runId}/events` | Yash | Status stream for Slack/status page |
 
-**Directory ownership** (no two people edit the same file):
+## 6. Directory Ownership
 
 ```text
-app/api/slack/**            → Laurence
-app/api/intake/**           → Yash
-app/api/sessions/**         → Yash   (except sessions/[id]/dispatch → Luke)
-app/api/replicas/**         → Luke
-lib/insforge/**             → Yash   (SDK client, schema types, status helpers — shared import)
-lib/slack/**                → Laurence
-agent/**                    → Luke   (existing replicas scaffold)
-insforge/migrations/**      → Yash
-developer_plans/**          → all (this folder)
+app/api/slack/**            -> Laurence
+lib/slack/**                -> Laurence
+app/debug/**                -> Yash
+app/api/runs/**             -> Yash, except dispatch-replicas -> Luke
+app/api/replicas/**         -> Luke
+lib/insforge/**             -> Yash
+lib/diagnosis/**            -> Yash
+agent/**                    -> Luke
+migrations/**               -> Yash
+developer_plans/**          -> all, but shared-contracts first
 ```
 
-`lib/insforge/` is the **one shared import surface** — Yash owns it; Laurence and Luke import its
-typed client + the `Status`/contract types but do not edit it (request changes via Yash).
+## 7. Storage
 
----
+- Bucket: `reflex-evidence` private.
+- Slack artifacts: `runs/{runId}/slack/{artifactKey}`.
+- Debug artifacts: `runs/{runId}/debug/{artifactKey}`.
+- Replicas evidence: `runs/{runId}/replicas/{artifactKey}`.
 
-## 7. Environment variables (split by owner)
-
-Server-side only; never ship privileged keys to the browser. (TECHNICAL_DOCUMENT.md §11)
+## 8. Environment Variables
 
 ```text
-# Yash (InsForge + model)
-INSFORGE_PROJECT_URL=
-INSFORGE_API_KEY=            # service/anon key for server routes
-MODEL_API_KEY=              # OpenRouter via InsForge gateway (npx @insforge/cli ai setup)
-
-# Laurence (Slack)
-SLACK_BOT_TOKEN=
-SLACK_SIGNING_SECRET=
-SLACK_APP_TOKEN=            # if using socket mode
-
-# Luke (Replicas + GitHub)
-REPLICAS_API_KEY=          # sk_replicas_... (org admin claims credits, code: ainexus)
-REPLICAS_ENVIRONMENT_ID=   # pre-built env bound to seeded repo
-REPLICAS_WEBHOOK_SECRET=
-GITHUB_REPO=yxshrk/electron
-# GitHub PRs go through the Replicas GitHub App — no raw token needed for the agent path
-
-# Shared
 NEXT_PUBLIC_APP_URL=
+INSFORGE_PROJECT_URL=
+INSFORGE_SERVICE_KEY=
+SLACK_SIGNING_SECRET=
+SLACK_BOT_TOKEN=
+GITHUB_TOKEN=
+DEFAULT_GITHUB_REPO=https://github.com/yxshrk/electron
+MODEL_API_KEY=
+REPLICAS_API_KEY=
+REPLICAS_ENVIRONMENT_ID=
+REPLICAS_WEBHOOK_SECRET=
 ```
 
-Keep one shared `.env.example` at repo root; each owner adds their block.
+## 9. Build Order
 
----
-
-## 8. Build order (so three people start now, in parallel)
-
-Adapted from TECHNICAL_DOCUMENT.md §12.4 for the new split:
-
-1. **Yash** scaffolds Next.js + InsForge + schema + `lib/insforge/` client + `/api/intake` (returns
-   a real `sessionId`). **This unblocks everyone** — do it first, publish the contract types.
-2. **Laurence** builds Slack intake against a **mocked** `/api/intake` (the C1 shape above), then
-   swaps to Yash's real endpoint.
-3. **Luke** keeps building `agent/replicas/*` against `examples/dispatch-input.json` (the C3 shape)
-   and the **scripted fallback** — no dependency on Yash/Laurence to make a PR.
-4. **Yash** adds `/api/sessions/{id}/diagnose` + the brief/confirm loop (deterministic JSON for the
-   rehearsed transcript).
-5. **Yash + Luke** wire `/api/sessions/{id}/dispatch` → `dispatchHypothesis()` → `/api/replicas/callback`.
-6. **Laurence** wires the live Slack thread to Yash's `StatusEvent` stream.
-7. **All three** rehearse the full Slack-to-PR script 3× and cut anything that flakes.
-
-Each plan ([Laurence](./laurence-slack-intake.md) · [Yash](./yash-insforge-diagnosis.md) ·
-[Luke](./luke-replicas-dispatch-pr.md)) expands its slice against these contracts.
+1. Yash creates the InsForge schema, typed client, and `POST /api/runs`.
+2. Laurence creates `/reflex-bug-mode`, `/reflex-debug-mode`, and Slack interactions against mocked run APIs.
+3. Yash implements context ingest, debug capture ingest, media storage, report draft, and intake package creation.
+4. Yash implements diagnosis from confirmed intake packages.
+5. Luke implements scripted fallback PR, then Replicas dispatch.
+6. Laurence wires Slack status updates to the run event stream.
+7. Everyone rehearses bug mode first; debug mode is a polish path if time allows.
