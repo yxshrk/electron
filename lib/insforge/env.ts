@@ -1,11 +1,17 @@
 // Server-only InsForge config. Never import this from a client component.
-// The service key is a full-access admin key (shared-contracts.md §8).
+// The service key is a full-access admin key (shared-contracts.md section 8).
 
 export interface InsforgeConfig {
   projectUrl: string;
   serviceKey: string;
 }
 
+/**
+ * Reads required server-side InsForge configuration.
+ *
+ * @returns Normalized InsForge project URL and service key.
+ * @sideEffects Reads process environment and throws when required values are missing.
+ */
 export function insforgeConfig(): InsforgeConfig {
   const projectUrl = process.env.INSFORGE_PROJECT_URL;
   const serviceKey = process.env.INSFORGE_SERVICE_KEY;

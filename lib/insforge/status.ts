@@ -1,11 +1,18 @@
 // State-machine helpers. Every status change writes reflex_runs.status AND appends a
-// run_events row so Slack + the dashboard render a full timeline (shared-contracts §2, C6).
+// run_events row so Slack + the dashboard render a full timeline (shared-contracts section 2, C6).
 import { dbInsert, dbUpdate } from "./db";
 import type { RunStatus, RunEventInput } from "./types";
 
 const TERMINAL: RunStatus[] = ["shipped"];
 
-/** Append a timeline event without changing run status. */
+/**
+ * Appends a timeline event without changing run status.
+ *
+ * @param runId Reflex run UUID.
+ * @param event Timeline event payload.
+ * @returns Nothing after the event is stored.
+ * @sideEffects Inserts a run_events row in InsForge.
+ */
 export async function addEvent(runId: string, event: RunEventInput): Promise<void> {
   await dbInsert("run_events", {
     run_id: runId,
@@ -18,7 +25,15 @@ export async function addEvent(runId: string, event: RunEventInput): Promise<voi
   });
 }
 
-/** Transition a run to `status` and record the event. */
+/**
+ * Transitions a run to a new status and records the timeline event.
+ *
+ * @param runId Reflex run UUID.
+ * @param status New run status.
+ * @param event Timeline event payload without status.
+ * @returns Nothing after the run and event are stored.
+ * @sideEffects Updates reflex_runs and inserts a run_events row in InsForge.
+ */
 export async function setStatus(
   runId: string,
   status: RunStatus,

@@ -214,7 +214,7 @@ Suggested file contract once the app scaffold exists:
 Failing repro command:
 
 ```bash
-npm run test -- tests/report-export.spec.ts
+npm run test:export-large:repro
 ```
 
 Expected before-fix output:
@@ -234,7 +234,7 @@ Keep UI behavior minimal: either complete export or show progress without crashi
 Verification command:
 
 ```bash
-npm run test -- tests/report-export.spec.ts
+npm run test:export-large:fixed
 ```
 
 Expected after-fix output:
@@ -247,6 +247,13 @@ Scripted fallback command:
 
 ```bash
 npm run reflex:scripted-fallback -- agent/examples/dispatch-input.json
+```
+
+This command runs in dry-run mode by default so it can be used safely during development. To create
+the fallback fix branch and PR, run:
+
+```bash
+npm run reflex:scripted-fallback:create -- agent/examples/dispatch-input.json
 ```
 
 Scripted fallback must:

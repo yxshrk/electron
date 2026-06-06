@@ -210,6 +210,16 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Node / TypeScript demo scaffold
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Project source directories
+!lib/
+!lib/**
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

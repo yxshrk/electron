@@ -1,6 +1,6 @@
 // GET /api/runs/{runId}/events -> Server-Sent Events stream of run_events (C6).
 // Slack and the dashboard subscribe here for the live pipeline timeline. Vercel = SSE, not WS
-// (STACK_RESEARCH §5). Falls back gracefully: clients can also poll GET /api/runs/{runId}.
+// Falls back gracefully: clients can also poll GET /api/runs/{runId}.
 import { NextRequest } from "next/server";
 import { dbSelect } from "@/lib/insforge/db";
 
@@ -19,6 +19,14 @@ interface RunEventRow {
 
 const TERMINAL = new Set(["shipped", "diagnosis_failed", "dispatch_failed", "reproduction_failed", "pr_failed"]);
 
+/**
+ * Streams run_events updates for one Reflex run using Server-Sent Events.
+ *
+ * @param _req Incoming request; unused because the run ID comes from route params.
+ * @param params Dynamic route params containing the run ID.
+ * @returns Event stream that ends after a terminal status or timeout.
+ * @sideEffects Polls InsForge for run_events while the stream remains open.
+ */
 export async function GET(_req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const encoder = new TextEncoder();

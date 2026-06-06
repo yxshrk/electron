@@ -1,0 +1,13 @@
+{
+  "runId": "run_export_hang_01",
+  "intakePackageId": "pkg_run_export_hang_01",
+  "repoUrl": "https://github.com/yxshrk/electron",
+  "role": "sales_csm",
+  "symptom": "Report export hangs on large datasets",
+  "hypothesis": {
+    "id": "hyp_1_unbounded_export_query",
+    "title": "Unbounded report query",
+    "reproductionPlan": "Seed a large dataset and trigger report export from the reporting page.",
+    "expectedFailure": "Export request exceeds the synchronous row budget or the frontend spinner never resolves."
+  }
+}
