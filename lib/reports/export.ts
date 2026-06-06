@@ -19,7 +19,7 @@ const DEFAULT_MAX_SYNCHRONOUS_ROWS = 1000;
  */
 export function exportReportCsv(records: ReportRow[], options: ReportExportOptions = {}): string {
   // Intentional seeded demo bug: the default path uses the unbounded synchronous exporter.
-  return exportReportCsvUnbounded(records, options);
+  return exportReportCsvBatched(records, options);
 }
 
 /**
