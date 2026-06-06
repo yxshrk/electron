@@ -4,7 +4,7 @@
 
 Reflex is a role-aware, screen-aware debugging assistant for agentic software development. A user shares their screen, identifies their role, and describes a product problem in plain language. Reflex converts that moment into a structured engineering symptom, dispatches coding agents to reproduce the issue in sandboxed environments, and opens a pull request with evidence that the bug was reproduced and fixed.
 
-The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on June 6, 2026. The event is focused on agentic developer tools, coding agents, autonomous workflows, agent infrastructure, and AI-native engineering systems. Reflex is designed to be sponsor-native: InsForge provides backend infrastructure and diagnostic memory, Replicas and Devin handle agentic engineering work, Vercel hosts the web experience, and Limrun is an optional mobile reproduction path.
+The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on June 6, 2026. The event is focused on agentic developer tools, coding agents, autonomous workflows, agent infrastructure, and AI-native engineering systems. The fastest demo implementation is a single Next.js app backed by InsForge. Next.js owns the UI and orchestration API routes; InsForge owns the Postgres database, storage, realtime status updates, and backend project context.
 
 One-line judge pitch:
 
@@ -42,6 +42,41 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 
 For the hackathon, Reflex should optimize for a reliable end-to-end spine on one seeded repository and one or two rehearsed symptoms.
 
+## Fastest Demo Stack
+
+The fastest credible version is:
+
+```text
+Next.js + InsForge + GitHub API + one coding-agent path
+```
+
+Do not add Supabase for the MVP. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Next.js app with a separate database provider.
+
+| Layer | Tool | Responsibility |
+| --- | --- | --- |
+| Product UI | Next.js | Role selector, screen capture, transcript input, pipeline dashboard, PR result |
+| Intake API | Next.js API routes | Receive Web UI and optional Slack reports |
+| Orchestration | Next.js API routes | Create diagnosis, dispatch agent work, update run state |
+| Database | InsForge Postgres | Sessions, observations, diagnoses, hypotheses, agent runs, PR metadata |
+| File storage | InsForge Storage | Screenshots, recordings, logs, reproduction evidence |
+| Live updates | InsForge Realtime or polling | Show pipeline state without refreshing |
+| AI/model access | InsForge Model Gateway or direct model API | Summarize reports and generate diagnosis JSON |
+| PR output | GitHub API | Create branches, commits, and pull requests |
+| Agent execution | Replicas, Devin, Codex, or scripted fallback | Reproduce and fix the seeded demo bug |
+
+Minimum demo loop:
+
+```text
+Web UI report
+-> Next.js /api/intake
+-> InsForge stores session
+-> Next.js /api/diagnose creates structured symptom
+-> Next.js /api/dispatch starts one agent or scripted sandbox run
+-> InsForge stores run status and evidence
+-> GitHub PR opens
+-> UI shows the PR
+```
+
 ## 5. User Roles and Diagnostic Lenses
 
 The role tag is not cosmetic. It determines translation depth, prompt framing, hypothesis scope, and agent instructions.
@@ -64,23 +99,42 @@ Example:
 
 ```mermaid
 flowchart LR
-    User["User shares screen + role + voice"] --> CaptureUI["Vercel web capture UI"]
-    CaptureUI --> ObservationAPI["Observation API"]
-    ObservationAPI --> Multimodal["Multimodal symptom extraction"]
-    ObservationAPI --> InsForgeDB["InsForge Postgres + storage"]
-    Multimodal --> Diagnosis["Diagnosis service"]
-    Diagnosis --> Hypotheses["Ranked hypothesis tree"]
-    Hypotheses --> Orchestrator["Agent orchestrator"]
-    Orchestrator --> Replicas["Replicas sandbox agents"]
-    Orchestrator --> Devin["Devin implementation agent"]
-    Replicas --> Evidence["Reproduction evidence"]
-    Devin --> Evidence
-    Evidence --> PR["GitHub pull request"]
-    Evidence --> Memory["Symptom resolution memory"]
-    Memory --> Diagnosis
+    WebUI["Next.js Web UI"] --> Intake["Next.js /api/intake"]
+    Slack["Optional Slack command"] --> Intake
+    Intake --> DB["InsForge Postgres"]
+    Intake --> Storage["InsForge Storage"]
+    DB --> Diagnose["Next.js /api/diagnose"]
+    Diagnose --> Model["InsForge Model Gateway or direct LLM"]
+    Diagnose --> Hypotheses["Hypotheses + reproduction plan"]
+    Hypotheses --> Dispatch["Next.js /api/dispatch"]
+    Dispatch --> Agent["Coding agent or scripted sandbox"]
+    Agent --> Evidence["Reproduction evidence + fix"]
+    Evidence --> DB
+    Evidence --> Storage
+    Evidence --> GitHub["GitHub PR"]
+    DB --> Realtime["InsForge Realtime or polling"]
+    Realtime --> WebUI
 ```
 
 ### 6.1 Components
+
+#### Next.js App
+
+Purpose: Provide the full product surface and lightweight orchestration layer.
+
+Responsibilities:
+
+- Render the Web UI.
+- Serve `/api/intake`, `/api/diagnose`, `/api/dispatch`, `/api/agent-callback`, and optional Slack routes.
+- Call InsForge SDK or REST APIs for database, storage, and realtime state.
+- Call the model path for diagnosis.
+- Call GitHub to create the final PR.
+
+Hackathon discipline:
+
+- Keep long-running agent work out of a single blocking request.
+- Store status in InsForge and let the UI poll or subscribe.
+- Prefer one reliable agent path over multiple incomplete integrations.
 
 #### Capture UI
 
@@ -206,10 +260,21 @@ Purpose: Provide backend primitives and persistent diagnostic memory.
 
 Responsibilities:
 
-- Store capture sessions, observations, diagnoses, hypotheses, agent runs, and PR metadata.
-- Store screenshot artifacts.
-- Maintain the symptom-resolution memory graph.
-- Provide edge functions for lightweight orchestration if available.
+- Store capture sessions, observations, diagnoses, hypotheses, agent runs, and PR metadata in Postgres.
+- Store screenshot, recording, log, and reproduction artifacts in Storage.
+- Publish pipeline status changes through Realtime, or support simple polling from the UI.
+- Provide optional auth if the demo needs user identity.
+- Provide optional model gateway access for diagnosis generation.
+- Maintain the symptom-resolution memory graph as a future product feature.
+
+Implementation setup:
+
+```bash
+npx @insforge/cli login
+npx @insforge/cli link
+npx @insforge/cli current
+npm install @insforge/sdk
+```
 
 Memory graph concept:
 
@@ -226,6 +291,7 @@ Memory graph concept:
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Session identifier |
+| `source` | Text | `web`, `slack`, or `manual` |
 | `role` | Text | User-selected role |
 | `repo_url` | Text | Target repository |
 | `status` | Text | Current pipeline state |
@@ -290,19 +356,106 @@ Memory graph concept:
 | `verification` | Text | Tests or reproduction evidence |
 | `created_at` | Timestamp | PR creation time |
 
+### 7.7 MVP Migration Shape
+
+The MVP can start with straightforward Postgres tables and JSON payload columns. Keep the schema explicit enough for the UI and demo, then normalize later only if the product grows.
+
+```sql
+create table capture_sessions (
+  id uuid primary key default gen_random_uuid(),
+  source text not null default 'web',
+  role text not null,
+  repo_url text not null,
+  status text not null default 'created',
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create table observations (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references capture_sessions(id) on delete cascade,
+  transcript text not null,
+  screenshot_url text,
+  visible_state jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table diagnoses (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references capture_sessions(id) on delete cascade,
+  symptom text not null,
+  role_lens text not null,
+  evidence jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table hypotheses (
+  id uuid primary key default gen_random_uuid(),
+  diagnosis_id uuid not null references diagnoses(id) on delete cascade,
+  title text not null,
+  confidence numeric not null default 0,
+  reproduction_plan text not null,
+  status text not null default 'pending'
+);
+
+create table agent_runs (
+  id uuid primary key default gen_random_uuid(),
+  hypothesis_id uuid references hypotheses(id) on delete set null,
+  provider text not null,
+  status text not null default 'pending',
+  sandbox_url text,
+  logs_url text,
+  result jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+create table pull_requests (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references capture_sessions(id) on delete cascade,
+  agent_run_id uuid references agent_runs(id) on delete set null,
+  github_url text not null,
+  summary text not null,
+  verification text not null,
+  created_at timestamptz not null default now()
+);
+```
+
 ## 8. API Surface
 
-### `POST /api/sessions`
+### `POST /api/intake`
 
-Creates a capture session.
+Creates a capture session from the Web UI or another intake surface.
 
 Request:
 
 ```json
 {
+  "source": "web",
   "role": "sales",
-  "repoUrl": "https://github.com/example/reporting-demo"
+  "repoUrl": "https://github.com/example/reporting-demo",
+  "transcript": "Every time I pull the big export it just hangs.",
+  "screenshotBase64": "..."
 }
+```
+
+Response:
+
+```json
+{
+  "sessionId": "sess_123",
+  "status": "created"
+}
+```
+
+### `POST /api/slack/commands`
+
+Optional Slack slash-command intake. It should normalize Slack input into the same internal shape as `/api/intake`.
+
+Example command:
+
+```text
+/reflex role:sales repo:https://github.com/example/reporting-demo Customer says export hangs on large reports.
 ```
 
 Response:
@@ -429,48 +582,91 @@ Recommended product-role feature:
 
 ## 11. Implementation Plan
 
-### Phase 1: Build the Spine
+### Phase 1: Create the Next.js Product Shell
 
-- Create the seeded demo repo and reproducible bug.
-- Define the diagnosis JSON contract.
-- Build the orchestrator endpoint.
-- Dispatch at least one agent task against a sandbox.
-- Produce a PR from a confirmed reproduction.
-
-Success criterion:
-
-- A structured symptom can trigger a real sandbox reproduction and PR without relying on the capture UI.
-
-### Phase 2: Add the Face
-
-- Build the Vercel capture UI.
-- Add role selection.
-- Add screen capture and transcript input.
-- Render the pipeline visualization.
-- Feed the same structured symptom path built in Phase 1.
+- Create a Next.js app.
+- Build the first-screen dashboard instead of a landing page.
+- Add role selector, repo selector, transcript input, screen-share button, and pipeline timeline.
+- Add a right-side run panel for diagnosis, hypotheses, agent status, and PR output.
 
 Success criterion:
 
-- The UI can drive the already-working backend pipeline with rehearsed input.
+- A user can submit a role-tagged report and see a session appear in the UI.
 
-### Phase 3: Add Sponsor Depth
+### Phase 2: Connect InsForge
 
-- Persist session and run state in InsForge.
-- Add Replicas parallel hypothesis dispatch.
-- Add Devin as a confirmed-fix handoff if accessible.
-- Add Limrun only for a mobile-specific stretch demo.
+- Run `npx @insforge/cli login`.
+- Run `npx @insforge/cli link`.
+- Run `npx @insforge/cli current` to verify the local project is linked.
+- Install `@insforge/sdk`.
+- Create the MVP tables with SQL migrations.
+- Create a private storage bucket for screenshots and evidence logs.
+- Use polling first; add InsForge Realtime only if there is time.
 
 Success criterion:
 
-- Each sponsor integration has a visible, necessary role in the demo.
+- Sessions, observations, diagnoses, hypotheses, agent runs, and PR records persist in InsForge.
+
+### Phase 3: Build the Happy Path
+
+- Implement `/api/intake`.
+- Implement `/api/diagnose`.
+- Implement `/api/dispatch`.
+- Use a rehearsed transcript and seeded repo bug for deterministic behavior.
+- Start with one confirmed agent path or a scripted sandbox run.
+- Store each state transition in InsForge.
+
+Success criterion:
+
+- The pipeline reaches `reproduced` and `fixed` for the primary seeded bug.
+
+### Phase 4: Open the PR
+
+- Create a branch through the GitHub API or local git automation.
+- Commit the fix or demo patch.
+- Open a PR with source session, reproduction evidence, and verification notes.
+- Store the PR URL in InsForge.
+- Render the PR as the final `Ship` stage in the UI.
+
+Success criterion:
+
+- The demo ends with a real PR link.
+
+### Phase 5: Add Polish Only After the Spine Works
+
+- Add real browser screen capture via `getDisplayMedia`.
+- Add screenshot upload to InsForge Storage.
+- Add speech-to-text or a transcript input fallback.
+- Add InsForge Realtime status updates.
+- Add Slack intake.
+- Add parallel agent fan-out.
+
+Success criterion:
+
+- Polish improves the demo without becoming a dependency for the core flow.
+
+### MVP Environment Variables
+
+```text
+NEXT_PUBLIC_APP_URL=
+INSFORGE_PROJECT_URL=
+INSFORGE_SERVICE_KEY=
+GITHUB_TOKEN=
+GITHUB_REPO=
+MODEL_API_KEY=
+```
+
+Keep these values out of the browser unless they are explicitly public. Server-side API routes should own all privileged InsForge, GitHub, model, and agent credentials.
 
 ## 12. Build / Fake / Name Cuts
 
 Build:
 
-- Structured symptom to hypothesis tree.
-- Sandbox reproduction against a seeded repo.
-- Minimal code fix.
+- Next.js Web UI and API routes.
+- InsForge-backed session and run persistence.
+- Structured symptom to hypothesis tree for the rehearsed report.
+- One deterministic reproduction path against a seeded repo.
+- Minimal code fix or seeded patch.
 - Pull request creation.
 - Pipeline status UI.
 
@@ -480,6 +676,7 @@ Fake:
 - Fully live multimodal interpretation for arbitrary screens.
 - Pre-warmed sandbox startup where needed.
 - Pre-indexed repository context.
+- Parallel agent fan-out if programmatic access is slow.
 
 Name:
 
@@ -487,6 +684,7 @@ Name:
 - Enterprise multi-tenant controls.
 - Full diagnostic memory improvement loop.
 - Mobile reproduction path unless Limrun is ready.
+- Deep Slack workflow automation.
 
 ## 13. Verification Strategy
 
@@ -538,14 +736,15 @@ Production requirements would include screenshot redaction, data retention contr
 | Multimodal extraction is unreliable | Diagnosis may drift | Use rehearsed inputs and structured transcript fallback |
 | Sandbox startup is slow | Demo stalls | Pre-warm or show precomputed run if network fails |
 | Agent fixes wrong code | Demo loses credibility | Use seeded bugs with deterministic tests |
-| Sponsor APIs differ from assumptions | Integration delays | Verify API surfaces before building UI polish |
+| InsForge project is not linked before demo | Backend calls fail | Run `npx @insforge/cli current` during setup and keep a fallback project ready |
+| Sponsor APIs differ from assumptions | Integration delays | Keep Replicas, Devin, Slack, and Limrun outside the core dependency path |
 
 ## 16. Open Questions to Verify
 
 - Does Replicas expose a programmatic API for dispatching agent tasks, or only integrations through Slack, Linear, GitHub, and similar tools?
 - What is the fastest reliable way to pass a confirmed fix task into Devin during the hackathon?
 - Which model path should handle screen and voice extraction while preserving sponsor alignment?
-- Which InsForge primitives are available for storage, Postgres, auth, edge functions, and model access in the hackathon environment?
+- Which InsForge project should be linked for the demo, and what service credentials should the Next.js API routes use?
 - Can Limrun be integrated quickly enough to justify a mobile stretch demo?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
 
@@ -593,4 +792,9 @@ Everything before that spine can be scripted. Everything after that spine can be
 ## 19. Sources
 
 - InsForge Hackathon Luma page: https://luma.com/ainexus-t0fl
+- InsForge docs introduction: https://docs.insforge.dev/introduction
+- InsForge agent setup workflow: https://insforge.dev/skill.md
+- InsForge database docs: https://docs.insforge.dev/core-concepts/database/overview
+- InsForge storage docs: https://docs.insforge.dev/core-concepts/storage/overview
+- InsForge realtime docs: https://docs.insforge.dev/core-concepts/realtime/overview
 - Project concept notes provided during planning.
