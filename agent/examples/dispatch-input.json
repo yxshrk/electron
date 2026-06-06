@@ -1,0 +1,13 @@
+{
+  "sessionId": "sess_demo_001",
+  "repoUrl": "https://github.com/yxshrk/electron",
+  "role": "sales",
+  "symptom": "Report export hangs on large datasets",
+  "hypothesis": {
+    "id": "hyp_1",
+    "title": "Unbounded report query",
+    "reproductionPlan": "Seed a large dataset and trigger the report export",
+    "expectedFailure": "Export request times out or the spinner never resolves"
+  },
+  "environmentId": "REPLACE_WITH_ENVIRONMENT_ID"
+}
