@@ -8,6 +8,7 @@ This is the anti-collision spec for the three workstreams. It is aligned with
 | Concept | Use | Do Not Use |
 | --- | --- | --- |
 | One Reflex run | `runId`, `reflex_runs` | `sessionId`, `capture_sessions` |
+| Run timeline | `run_events` | UI-only status history |
 | User-facing summary | `bug report` | long ticket form |
 | Confirmed backend bundle | `intakePackageId`, `intake_packages` | raw prompt-only context |
 | Slack bug entry | `/reflex-bug-mode` | `/reflex role:sales repo:...` |
@@ -33,6 +34,9 @@ dispatch_failed
 reproduction_failed
 pr_failed
 ```
+
+Append every state-changing transition to `run_events` so Slack and `/dashboard/{runId}` can show a
+complete timeline instead of only the latest state.
 
 ## 3. Commands
 
@@ -168,6 +172,23 @@ interface EvidencePayload {
 }
 ```
 
+### C6: `RunEvent`
+
+Yash writes this on each state transition; Slack and the dashboard read it.
+
+```ts
+interface RunEvent {
+  runId: string;
+  eventType: string;
+  status?: string;
+  title: string;
+  detail?: string;
+  payload?: Record<string, unknown>;
+  actor?: string;
+  createdAt: string;
+}
+```
+
 ## 5. Route Ownership
 
 | Route | Owner | Purpose |
@@ -177,6 +198,8 @@ interface EvidencePayload {
 | `POST /api/slack/events` | Laurence | Slack file/message events |
 | `POST /api/slack/interactions` | Laurence | Confirm/Edit/Add Attachment actions |
 | `POST /api/runs` | Yash | Create `reflex_runs` row |
+| `GET /api/runs` | Yash | Read-only dashboard run list |
+| `GET /api/runs/{runId}` | Yash | Read-only dashboard run detail bundle |
 | `POST /api/runs/{runId}/context` | Yash | Store copied Slack context candidates |
 | `POST /api/runs/{runId}/debug-capture` | Yash | Store recorder artifacts |
 | `POST /api/runs/{runId}/media` | Yash | Store media artifact metadata |
@@ -186,13 +209,14 @@ interface EvidencePayload {
 | `POST /api/runs/{runId}/diagnose` | Yash | Generate symptom and hypotheses from package |
 | `POST /api/runs/{runId}/dispatch-replicas` | Luke | Dispatch confirmed hypothesis |
 | `POST /api/replicas/callback` | Luke | Persist Replicas/scripted evidence |
-| `GET /api/runs/{runId}/events` | Yash | Status stream for Slack/status page |
+| `GET /api/runs/{runId}/events` | Yash | Status stream for Slack and dashboard timeline |
 
 ## 6. Directory Ownership
 
 ```text
 app/api/slack/**            -> Laurence
 lib/slack/**                -> Laurence
+app/dashboard/**            -> Yash
 app/debug/**                -> Yash
 app/api/runs/**             -> Yash, except dispatch-replicas -> Luke
 app/api/replicas/**         -> Luke
@@ -228,10 +252,11 @@ REPLICAS_WEBHOOK_SECRET=
 
 ## 9. Build Order
 
-1. Yash creates the InsForge schema, typed client, and `POST /api/runs`.
+1. Yash creates the InsForge schema, typed client, `run_events`, and `POST /api/runs`.
 2. Laurence creates `/reflex-bug-mode`, `/reflex-debug-mode`, and Slack interactions against mocked run APIs.
 3. Yash implements context ingest, debug capture ingest, media storage, report draft, and intake package creation.
 4. Yash implements diagnosis from confirmed intake packages.
 5. Luke implements scripted fallback PR, then Replicas dispatch.
-6. Laurence wires Slack status updates to the run event stream.
-7. Everyone rehearses bug mode first; debug mode is a polish path if time allows.
+6. Yash implements `GET /api/runs`, `GET /api/runs/{runId}`, `GET /api/runs/{runId}/events`, `/dashboard`, and `/dashboard/{runId}`.
+7. Laurence wires Slack status updates to the run event stream.
+8. Everyone rehearses bug mode first; debug mode is a polish path if time allows.

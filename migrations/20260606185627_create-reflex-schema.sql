@@ -38,6 +38,20 @@ create table reflex_runs (
   ))
 );
 
+create table run_events (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  event_type text not null,
+  status text,
+  title text not null default '',
+  detail text not null default '',
+  payload jsonb not null default '{}'::jsonb,
+  actor text,
+  created_at timestamptz not null default now()
+);
+create index run_events_run_id_created_at_idx on run_events(run_id, created_at);
+create index run_events_event_type_idx on run_events(event_type);
+
 create table slack_context_messages (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references reflex_runs(id) on delete cascade,

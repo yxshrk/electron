@@ -18,6 +18,7 @@ Slack bug context or debug capture
   -> bug_briefs draft
   -> confirmed intake_packages row
   -> diagnoses + hypotheses
+  -> run_events timeline
   -> dispatch handoff to Luke
 ```
 
@@ -27,15 +28,17 @@ Bug mode and debug mode are sibling paths. Do not replace `/reflex-bug-mode` wit
 
 | Output | Shape | Consumer |
 | --- | --- | --- |
-| InsForge schema | `reflex_runs`, `slack_context_messages`, `observations`, `media_artifacts`, `bug_briefs`, `intake_packages`, `diagnoses`, `hypotheses`, `agent_runs`, `pull_requests` | Everyone |
+| InsForge schema | `reflex_runs`, `run_events`, `slack_context_messages`, `observations`, `media_artifacts`, `bug_briefs`, `intake_packages`, `diagnoses`, `hypotheses`, `agent_runs`, `pull_requests` | Everyone |
 | Run API | `POST /api/runs` -> `{ runId, status, recordingUrl? }` | Laurence |
+| Dashboard run list | `GET /api/runs` | Judges / teammates |
+| Dashboard run detail | `GET /api/runs/{runId}` | Judges / teammates |
 | Context ingest | `POST /api/runs/{runId}/context` | Laurence |
 | Media ingest | `POST /api/runs/{runId}/media` | Laurence |
 | Debug capture ingest | `POST /api/runs/{runId}/debug-capture` | Recorder |
 | Report draft | `ReportDraft` | Laurence |
 | Confirmed intake package | `IntakePackage` | Diagnosis + Luke |
 | Diagnosis | symptom + hypotheses | Luke |
-| Status events | `GET /api/runs/{runId}/events` or pollable run state | Laurence |
+| Status events | `run_events` and `GET /api/runs/{runId}/events` | Laurence / dashboard |
 
 ## What You Consume
 
@@ -58,7 +61,10 @@ lib/insforge/status.ts
 lib/diagnosis/report.ts
 lib/diagnosis/diagnose.ts
 app/debug/[runId]/page.tsx
+app/dashboard/page.tsx
+app/dashboard/[runId]/page.tsx
 app/api/runs/route.ts
+app/api/runs/[runId]/route.ts
 app/api/runs/[runId]/context/route.ts
 app/api/runs/[runId]/media/route.ts
 app/api/runs/[runId]/debug-capture/route.ts
@@ -215,18 +221,42 @@ reproduction_failed
 pr_failed
 ```
 
-Laurence's Slack thread and any optional Vercel status page should render from this source of truth.
+Also append each state-changing transition to `run_events`.
+
+Minimal event fields:
+
+```text
+event_type
+status
+title
+detail
+payload
+actor
+created_at
+```
+
+Laurence's Slack thread and the dashboard should render from `reflex_runs.status` plus `run_events`.
+Do not keep timeline state only in Slack.
+
+## Tiny Dashboard
+
+Build the dashboard as a read-only inspection layer:
+
+- `/dashboard`: list runs with status, mode, role, repo, symptom/report summary, diagnosis state, attachment count, PR link, and created time.
+- `/dashboard/{runId}`: show confirmed report, Slack chat history, attachments, debug artifacts, diagnosis, hypotheses, selected hypothesis, `run_events`, agent evidence, and PR verification.
+- No mutation buttons. Confirmation and dispatch stay in Slack/backend routes.
 
 ## Build Plan
 
-1. Create the migration and `lib/insforge` typed client.
+1. Create the migration, `run_events`, and `lib/insforge` typed client.
 2. Implement `POST /api/runs`.
 3. Implement context, media, and debug capture ingest routes.
 4. Implement report draft generation with deterministic fixture support.
 5. Implement confirmation and `intake_packages`.
 6. Implement diagnosis and hypothesis creation.
-7. Implement run status polling/events.
-8. Provide sample payloads so Laurence and Luke can test without the full live flow.
+7. Implement `run_events`, run status polling/events, and dashboard read endpoints.
+8. Implement `/dashboard` and `/dashboard/{runId}`.
+9. Provide sample payloads so Laurence and Luke can test without the full live flow.
 
 ## Demo Fallbacks
 
@@ -236,7 +266,8 @@ Laurence's Slack thread and any optional Vercel status page should render from t
 | Bug report draft | Model-generated JSON | Deterministic fixture for export hang |
 | Debug capture | Live browser recording | Pre-recorded upload |
 | Diagnosis | Model-generated diagnosis | Cached symptom and hypotheses |
-| Status | Real events | Poll stored run row |
+| Status/timeline | Real `run_events` | Seeded `run_events` rows |
+| Dashboard | Live read-only InsForge data | Seeded run detail payload |
 
 ## References
 

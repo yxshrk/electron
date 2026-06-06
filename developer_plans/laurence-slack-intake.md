@@ -36,7 +36,7 @@ After confirmation
 | Slack context candidates | `POST /api/runs/{runId}/context` | Yash |
 | Slack file metadata | `POST /api/runs/{runId}/media` | Yash |
 | User confirmation | `POST /api/runs/{runId}/confirm-bug-brief` | Yash |
-| Slack status updates | One bot thread updated from run status | User / judges |
+| Slack status updates | One bot thread updated from `reflex_runs.status` and `run_events` | User / judges |
 
 ## What You Consume
 
@@ -44,7 +44,7 @@ After confirmation
 | --- | --- | --- |
 | `{ runId, status }` | `POST /api/runs` | Track the run |
 | `ReportDraft` | `POST /api/runs/{runId}/draft-bug-brief` | Render confirmation card |
-| `StatusEvent` | `GET /api/runs/{runId}/events` or polling | Update Slack thread |
+| `RunEvent` | `GET /api/runs/{runId}/events` or polling | Update Slack thread |
 | PR URL | Status event or run state | Final Slack message |
 
 ## Owned Files
@@ -129,7 +129,8 @@ Buttons:
 
 ## Status Thread
 
-Render these states from InsForge, not from local guesses:
+Render these states from InsForge, not from local guesses. Use `run_events` for timeline details and
+`reflex_runs.status` for the current state:
 
 ```text
 created

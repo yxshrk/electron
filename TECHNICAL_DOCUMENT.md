@@ -31,6 +31,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 - Dispatch a Replicas coding-agent task to reproduce the top hypothesis, with parallel fan-out as a stretch.
 - Record reproduction evidence before writing or accepting a fix.
 - Open a pull request linked to the original report, reproduction trace, and fix summary.
+- Provide a tiny read-only dashboard so judges can inspect runs, diagnoses, chat history, attachments, evidence, and PR output.
 - Demonstrate sponsor usage in load-bearing parts of the architecture.
 
 ## 4. Non-Goals
@@ -52,7 +53,7 @@ The fastest credible version is:
 Slack + InsForge + Replicas + GitHub API
 ```
 
-Do not add Supabase for the MVP. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Slack bot with a separate database provider.
+Do not add MySQL or Supabase for the MVP. InsForge Postgres is the database, and InsForge Storage is the artifact store. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Slack bot with a separate database provider.
 
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
@@ -65,7 +66,7 @@ Do not add Supabase for the MVP. InsForge already provides the backend layer Ref
 | AI/model access | InsForge Model Gateway or direct model API | Draft bug report and generate diagnosis JSON |
 | Agent execution | Replicas | Run sandboxed background coding tasks and produce fix evidence |
 | PR output | GitHub API | Create branches, commits, and pull requests |
-| Optional status UI | Vercel / Next.js | Tiny `/run/:id` page or fuller dashboard only if time allows |
+| Demo visibility UI | Vercel / Next.js | Tiny read-only `/dashboard` and `/dashboard/{runId}` pages for judges |
 
 Minimum demo loop:
 
@@ -86,6 +87,7 @@ Entry point B: Slack /reflex-debug-mode command -> browser capture page -> Done
 -> InsForge stores run status and evidence
 -> GitHub PR opens
 -> Slack bot update thread shows the PR
+-> tiny dashboard lists the run and shows the confirmed report, chat history, attachments, diagnosis, evidence, and PR
 ```
 
 MVP command defaults:
@@ -130,17 +132,18 @@ The MVP should use sponsors where they are load-bearing, not decorative.
 | Sponsor / Partner | MVP Role | Optional Role |
 | --- | --- | --- |
 | InsForge | Backend source of truth: Postgres, Storage, Realtime/polling, optional Model Gateway | Diagnostic memory graph and richer model routing |
-| Vercel | Not required for the Slack-first core flow unless used to host the webhook/API | Tiny run status page, complete dashboard, and v0-generated UI |
+| Vercel | Host the webhook/API and tiny read-only dashboard if the team deploys on Vercel | Fuller dashboard and v0-generated UI |
 | Replicas | Primary sandboxed coding-agent execution layer | Parallel hypothesis fan-out and CI/code-review feedback loops |
 | Cognition / Devin | Not required for first demo | Second agent path for confirmed implementation work |
 | Limrun | Not required for web-first MVP | Mobile reproduction path for iOS/Android bug reports |
 | AI Nexus | Hackathon host/community context | No technical integration |
 | Entrepreneur First | Startup/community context | No technical integration |
 
-Vercel should stay out of the main product dependency path for the first demo. Slack can be the entire user interface. If there is time, add a Vercel status page:
+Vercel should stay out of the main product interaction path for the first demo. Slack can be the primary user interface. A tiny read-only dashboard is still useful for judges because it makes the stored InsForge data visible:
 
 ```text
-/run/:id shows the same status stored in InsForge: observe, diagnose, dispatch, reproduce, fix, ship, and PR link.
+/dashboard lists all Reflex runs and diagnoses.
+/dashboard/{runId} shows the confirmed report, chat history, attachments, debug artifacts, diagnosis, hypotheses, agent evidence, timeline, and PR link.
 ```
 
 Limrun should also stay out of the main demo path unless the team intentionally switches to a mobile bug. The correct positioning is:
@@ -204,7 +207,7 @@ flowchart LR
     Evidence --> GitHub["GitHub PR"]
     DB --> SlackUpdate["Slack thread updates"]
     GitHub --> SlackUpdate
-    DB --> StatusPage["Optional Vercel /run/:id page"]
+    DB --> Dashboard["Tiny dashboard /dashboard and /dashboard/{runId}"]
 ```
 
 ### 6.1 Components
@@ -322,7 +325,7 @@ Purpose: Normalize Slack input and orchestrate the Reflex pipeline.
 
 Responsibilities:
 
-- Serve `/api/slack/reflex-bug-mode`, `/api/slack/reflex-debug-mode`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}/context`, `/api/runs/{runId}/debug-capture`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/intake-package`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, and `/api/replicas/callback`.
+- Serve `/api/slack/reflex-bug-mode`, `/api/slack/reflex-debug-mode`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}`, `/api/runs/{runId}/context`, `/api/runs/{runId}/debug-capture`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/intake-package`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, `/api/runs/{runId}/events`, and `/api/replicas/callback`.
 - Call InsForge SDK or REST APIs for database and storage state.
 - Call the model path for diagnosis.
 - Dispatch Replicas or the scripted fallback.
@@ -331,25 +334,28 @@ Responsibilities:
 Hackathon discipline:
 
 - This can be implemented with Next.js API routes, InsForge Edge Functions, or another small HTTP service.
-- If Vercel is used, keep it focused on hosting this API and an optional run page.
+- If Vercel is used, keep it focused on hosting this API and the tiny read-only dashboard.
 - Long-running work should continue asynchronously after the Slack acknowledgement.
 
-#### Optional Vercel Status Page
+#### Tiny Demo Dashboard
 
-Purpose: Provide a visual page for judges if time allows.
+Purpose: Provide a read-only inspection layer for judges and teammates. This dashboard should show
+what Reflex stored and why the agent prompt is grounded in real evidence. It is not the primary user
+workflow; Slack remains the main product surface.
 
 Responsibilities:
 
-- Render `/run/:id`.
-- Read the latest run, diagnosis, hypotheses, agent run, evidence, and PR URL from InsForge.
-- Show the pipeline: observe, diagnose, dispatch, reproduce, fix, ship.
-- Mirror the same state already posted in Slack.
+- Render `/dashboard` as the first layer: all runs, current status, mode, role, repo, bug summary or symptom, diagnosis state, attachment count, PR link, and created time.
+- Render `/dashboard/{runId}` as the second layer: confirmed bug report, copied Slack chat history, screenshots/videos/recordings, debug artifacts, diagnosis, hypotheses, selected hypothesis, run timeline, Replicas or scripted evidence, and PR verification.
+- Read from InsForge only. The dashboard should not mutate runs, confirm reports, or dispatch agents.
+- Use `run_events` for the timeline, not local UI state.
+- Mirror the same stages already posted in Slack: created, context stored, report drafted, package confirmed, diagnosed, dispatched, reproduced, fixed, shipped.
 
 Hackathon discipline:
 
-- This page is optional.
-- Slack thread updates are the primary UX.
-- Do not delay the core Slack-to-PR flow for a polished dashboard.
+- Keep the dashboard plain and data-dense.
+- Build `/dashboard` and `/dashboard/{runId}` only after Slack intake, InsForge persistence, and the seeded bug path are working.
+- Do not delay the core Slack-to-PR flow for a polished UI.
 
 #### Observation API
 
@@ -475,6 +481,7 @@ Purpose: Provide backend primitives and persistent diagnostic memory.
 Responsibilities:
 
 - Store runs, observations, diagnoses, hypotheses, agent runs, and PR metadata in Postgres.
+- Store `run_events` so Slack and the dashboard can show a complete timeline instead of only the latest status.
 - Store screenshot, video, recording, log, and reproduction artifacts in Storage.
 - Publish pipeline status changes through Realtime, or support simple polling from the UI.
 - Provide optional auth if the demo needs user identity.
@@ -518,7 +525,21 @@ Memory graph concept:
 | `created_at` | Timestamp | Run start time |
 | `completed_at` | Timestamp | Run completion time |
 
-### 7.2 `slack_context_messages`
+### 7.2 `run_events`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID | Event identifier |
+| `run_id` | UUID | Parent Reflex run |
+| `event_type` | Text | Stable event name, such as `report.drafted`, `diagnosis.created`, or `pr.opened` |
+| `status` | Text | Pipeline status after the event, if the event changes state |
+| `title` | Text | Short dashboard/Slack display title |
+| `detail` | Text | Human-readable event detail |
+| `payload` | JSON | Optional structured data, such as counts, PR URL, or evidence references |
+| `actor` | Text | Slack user ID, service name, or agent provider that caused the event |
+| `created_at` | Timestamp | Event time |
+
+### 7.3 `slack_context_messages`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -532,7 +553,7 @@ Memory graph concept:
 | `raw_payload` | JSON | Minimal raw Slack message payload for traceability |
 | `created_at` | Timestamp | Copy time |
 
-### 7.3 `observations`
+### 7.4 `observations`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -543,7 +564,7 @@ Memory graph concept:
 | `visible_state` | JSON | Extracted UI state |
 | `created_at` | Timestamp | Observation time |
 
-### 7.4 `media_artifacts`
+### 7.5 `media_artifacts`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -560,7 +581,7 @@ Memory graph concept:
 | `safe_to_share` | Boolean | Whether this artifact can be linked from PR/debug output |
 | `created_at` | Timestamp | Artifact creation time |
 
-### 7.5 `bug_briefs`
+### 7.6 `bug_briefs`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -579,7 +600,7 @@ Memory graph concept:
 | `created_at` | Timestamp | Brief creation time |
 | `confirmed_at` | Timestamp | Confirmation time |
 
-### 7.6 `intake_packages`
+### 7.7 `intake_packages`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -589,13 +610,14 @@ Memory graph concept:
 | `package_key` | Text | Human-readable key, such as `pkg_run_export_hang_01` |
 | `chat_history` | JSON | Ordered copied Slack messages used for diagnosis |
 | `media_artifacts` | JSON | Ordered attachment and storage references |
+| `debug_capture_artifacts` | JSON | Ordered debug recording, audio, screenshot, transcript, and note references |
 | `confirmed_report` | JSON | Confirmed bug report fields shown to the user |
 | `status` | Text | Draft, confirmed, or superseded |
 | `confirmed_by` | Text | Slack user ID that confirmed the package |
 | `created_at` | Timestamp | Package creation time |
 | `confirmed_at` | Timestamp | Confirmation time |
 
-### 7.7 `diagnoses`
+### 7.8 `diagnoses`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -608,7 +630,7 @@ Memory graph concept:
 | `evidence` | JSON | Evidence extracted from screen and transcript |
 | `created_at` | Timestamp | Diagnosis time |
 
-### 7.8 `hypotheses`
+### 7.9 `hypotheses`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -617,22 +639,24 @@ Memory graph concept:
 | `title` | Text | Short hypothesis name |
 | `confidence` | Float | Ranked likelihood |
 | `reproduction_plan` | Text | Sandbox instructions |
+| `expected_failure` | Text | Failure the sandbox should prove before fixing |
 | `status` | Text | Pending, running, reproduced, rejected, fixed |
 
-### 7.9 `agent_runs`
+### 7.10 `agent_runs`
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Agent run identifier |
 | `hypothesis_id` | UUID | Hypothesis being tested |
 | `provider` | Text | Replicas, Devin, or fallback |
+| `status` | Text | Pending, running, reproduced, fixed, shipped, or failed |
 | `sandbox_url` | Text | Sandbox reference |
 | `logs_url` | Text | Execution logs |
 | `result` | JSON | Reproduction and fix result |
 | `created_at` | Timestamp | Run start time |
 | `completed_at` | Timestamp | Run completion time |
 
-### 7.10 `pull_requests`
+### 7.11 `pull_requests`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -640,11 +664,12 @@ Memory graph concept:
 | `run_id` | UUID | Source Reflex run |
 | `agent_run_id` | UUID | Producing run |
 | `github_url` | Text | Pull request URL |
+| `root_cause` | Text | Root cause found during reproduction |
 | `summary` | Text | Fix summary |
 | `verification` | Text | Tests or reproduction evidence |
 | `created_at` | Timestamp | PR creation time |
 
-### 7.11 MVP Migration Shape
+### 7.12 MVP Migration Shape
 
 The MVP can start with straightforward Postgres tables and JSON payload columns. Keep the schema explicit enough for the UI and demo, then normalize later only if the product grows.
 
@@ -663,6 +688,18 @@ create table reflex_runs (
   status text not null default 'created',
   created_at timestamptz not null default now(),
   completed_at timestamptz
+);
+
+create table run_events (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  event_type text not null,
+  status text,
+  title text not null default '',
+  detail text not null default '',
+  payload jsonb not null default '{}'::jsonb,
+  actor text,
+  created_at timestamptz not null default now()
 );
 
 create table slack_context_messages (
@@ -725,6 +762,7 @@ create table intake_packages (
   package_key text not null unique,
   chat_history jsonb not null default '[]'::jsonb,
   media_artifacts jsonb not null default '[]'::jsonb,
+  debug_capture_artifacts jsonb not null default '[]'::jsonb,
   confirmed_report jsonb not null default '{}'::jsonb,
   status text not null default 'draft',
   confirmed_by text,
@@ -749,6 +787,7 @@ create table hypotheses (
   title text not null,
   confidence numeric not null default 0,
   reproduction_plan text not null,
+  expected_failure text not null default '',
   status text not null default 'pending'
 );
 
@@ -769,6 +808,7 @@ create table pull_requests (
   run_id uuid not null references reflex_runs(id) on delete cascade,
   agent_run_id uuid references agent_runs(id) on delete set null,
   github_url text not null,
+  root_cause text not null default '',
   summary text not null,
   verification text not null,
   created_at timestamptz not null default now()
@@ -914,6 +954,68 @@ Response:
 {
   "runId": "run_export_hang_01",
   "status": "created"
+}
+```
+
+### `GET /api/runs`
+
+Read-only list endpoint for `/dashboard`. It should be fast, shallow, and good enough for judges to
+see every active or demo-seeded Reflex run.
+
+Response:
+
+```json
+{
+  "runs": [
+    {
+      "runId": "run_export_hang_01",
+      "mode": "bug",
+      "role": "sales_csm",
+      "repoUrl": "https://github.com/yxshrk/electron",
+      "status": "diagnosed",
+      "summary": "Report export hangs on large datasets",
+      "diagnosisId": "diag_export_hang_01",
+      "mediaArtifactCount": 2,
+      "prUrl": null,
+      "createdAt": "2026-06-06T18:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /api/runs/{runId}`
+
+Read-only detail endpoint for `/dashboard/{runId}`. It should return the complete demo evidence
+bundle so the dashboard can render without making many small requests.
+
+Response:
+
+```json
+{
+  "run": {
+    "runId": "run_export_hang_01",
+    "status": "shipped",
+    "mode": "bug",
+    "role": "sales_csm",
+    "repoUrl": "https://github.com/yxshrk/electron"
+  },
+  "timeline": [
+    {
+      "eventType": "report.drafted",
+      "status": "report_drafted",
+      "title": "Bug report drafted",
+      "detail": "Used 8 Slack messages and 2 files."
+    }
+  ],
+  "chatHistory": [],
+  "mediaArtifacts": [],
+  "confirmedReport": {},
+  "diagnosis": {},
+  "hypotheses": [],
+  "agentRuns": [],
+  "pullRequest": {
+    "url": "https://github.com/yxshrk/electron/pull/42"
+  }
 }
 ```
 
@@ -1246,14 +1348,15 @@ Request:
 
 ### `GET /api/runs/{runId}/events`
 
-Optional endpoint for a Vercel status page. Streams pipeline events over Server-Sent Events or WebSocket if the team builds `/run/:id`.
+Read-only endpoint for Slack thread updates and the dashboard timeline. It can stream pipeline
+events over Server-Sent Events, or return stored `run_events` rows for polling.
 
 Event examples:
 
 ```json
-{ "type": "diagnosis.created", "symptom": "Report export hangs on large datasets" }
-{ "type": "agent.reproduced", "runId": "run_export_hang_01", "evidence": "Export test timed out at 30s" }
-{ "type": "pr.opened", "url": "https://github.com/yxshrk/electron/pull/42" }
+{ "eventType": "diagnosis.created", "status": "diagnosed", "detail": "Report export hangs on large datasets" }
+{ "eventType": "agent.reproduced", "status": "reproduced", "detail": "Export test timed out at 30s" }
+{ "eventType": "pr.opened", "status": "shipped", "url": "https://github.com/yxshrk/electron/pull/42" }
 ```
 
 ## 9. End-to-End Flow
@@ -1288,6 +1391,7 @@ Event examples:
 9. Replicas seeds a large dataset, reproduces the hang, writes a minimal fix, and runs verification.
 10. GitHub PR opens with reproduction evidence and a link to the source run.
 11. The Reflex bot update thread receives the PR URL and final verification summary.
+12. `/dashboard` shows the run in the list, and `/dashboard/{runId}` shows the chat history, attachments, diagnosis, timeline, evidence, and PR.
 
 The simplest user-facing flow is:
 
@@ -1306,15 +1410,25 @@ The simplest user-facing flow is:
 
 ## 10. Demo Repository Requirements
 
-The demo repository should contain two or three seeded issues that map cleanly from vague user symptoms to reproducible technical failures.
+The demo repository must contain at least one seeded issue that maps cleanly from a vague user
+symptom to a reproducible technical failure. Two or three seeded issues are useful for backup, but
+the primary export-hang bug is required for a reliable end-to-end demo.
 
-Recommended primary bug:
+Required primary bug:
 
 - Surface symptom: report export spinner hangs.
 - Root cause: unbounded database query or synchronous processing path.
 - Reproduction: seed large dataset and trigger export.
 - Fix: add pagination, streaming, batching, or query bound.
 - Verification: export completes under defined timeout and test passes.
+
+Required setup artifacts:
+
+- A failing test, script, or documented command that reproduces the export hang before the fix.
+- A seeded data fixture large enough to make the failure deterministic.
+- A known minimal patch for the scripted fallback path.
+- A PR body template that includes source run, chat/evidence summary, root cause, fix summary, and verification.
+- A pre-opened fallback PR link in case live Replicas or GitHub is slow during the demo.
 
 Recommended secondary bug:
 
@@ -1362,7 +1476,7 @@ Success criterion:
 
 Success criterion:
 
-- Runs, observations, diagnoses, hypotheses, agent runs, and PR records persist in InsForge.
+- Runs, run events, observations, diagnoses, hypotheses, agent runs, and PR records persist in InsForge.
 
 ### Phase 3: Build the Happy Path
 
@@ -1378,7 +1492,7 @@ Success criterion:
 - Implement `POST /api/runs/{runId}/dispatch-replicas`.
 - Use a rehearsed transcript and seeded repo bug for deterministic behavior.
 - Start with one confirmed agent path or a scripted sandbox run.
-- Store each state transition in InsForge.
+- Store each state transition in `reflex_runs.status` and append a `run_events` row.
 - Post each state transition back into the Slack bot update thread.
 
 Success criterion:
@@ -1397,10 +1511,21 @@ Success criterion:
 
 - The demo ends with a real PR link.
 
-### Phase 5: Add Polish Only After the Spine Works
+### Phase 5: Add the Tiny Dashboard
 
-- Add the optional Vercel `/run/:id` status page.
-- Add a fuller Vercel dashboard only if time allows.
+- Implement `/dashboard`.
+- Implement `/dashboard/{runId}`.
+- Implement `GET /api/runs`.
+- Implement `GET /api/runs/{runId}`.
+- Show all runs, diagnoses, current status, attachment count, and PR link in the first layer.
+- Show confirmed report, chat history, attachments, debug artifacts, diagnosis, hypotheses, timeline, agent evidence, and PR verification in the detail layer.
+
+Success criterion:
+
+- Judges can click from a run list into one run and inspect every stored artifact used by the demo.
+
+### Phase 6: Add Polish Only After the Spine Works
+
 - Add the `/reflex-debug-mode` browser capture page with `getDisplayMedia` and microphone capture if the Slack bug-mode spine already works.
 - Add richer screenshot/video upload handling to InsForge Storage.
 - Add speech-to-text or a transcript input fallback for the optional web surface.
@@ -1435,8 +1560,8 @@ The team should split by interface boundaries, not by page sections. Each person
 | Owner | Primary Scope | Must Deliver | Depends On |
 | --- | --- | --- | --- |
 | Laurence | Slack front door | `/reflex-bug-mode`, `/reflex-debug-mode`, Slack context fetch, confirmation card, Slack thread status updates | Yash's run APIs and shared contracts |
-| Yash | InsForge backend, debug capture storage, report draft, diagnosis | `reflex_runs` schema, context/media/debug ingest, bug report draft, confirmed intake package, diagnosis, run status source of truth | InsForge credentials and Slack payloads from Laurence |
-| Luke | Replicas dispatch, reproduction, fix, and PR | Scripted fallback PR, Replicas dispatch route, evidence payload, GitHub PR output | Confirmed intake package and hypothesis from Yash |
+| Yash | InsForge backend, debug capture storage, report draft, diagnosis, dashboard read model | `reflex_runs` and `run_events` schema, context/media/debug ingest, bug report draft, confirmed intake package, diagnosis, run status source of truth, `/dashboard` data | InsForge credentials and Slack payloads from Laurence |
+| Luke | Seeded bug, Replicas dispatch, reproduction, fix, and PR | Deterministic export-hang fixture, scripted fallback PR, Replicas dispatch route, evidence payload, GitHub PR output | Confirmed intake package and hypothesis from Yash |
 
 ### 12.2 Workstream Contracts
 
@@ -1572,8 +1697,10 @@ Slack should never infer progress locally. Each thread update should come from t
 5. Yash adds `POST /api/runs/{runId}/confirm-bug-brief`, `POST /api/runs/{runId}/intake-package`, and `POST /api/runs/{runId}/diagnose`.
 6. Luke creates the seeded bug path and scripted fallback that can produce a PR from a known fix.
 7. Luke connects `POST /api/runs/{runId}/dispatch-replicas` and `POST /api/replicas/callback`.
-8. Laurence wires Slack thread updates to `reflex_runs.status` through the run event stream or polling.
-9. Everyone rehearses `/reflex-bug-mode` first, then adds `/reflex-debug-mode` only if the core spine is reliable.
+8. Yash appends `run_events` on each state transition and exposes `GET /api/runs`, `GET /api/runs/{runId}`, and `GET /api/runs/{runId}/events`.
+9. Laurence wires Slack thread updates to `reflex_runs.status` and `run_events` through the run event stream or polling.
+10. Yash adds the tiny read-only `/dashboard` and `/dashboard/{runId}` views.
+11. Everyone rehearses `/reflex-bug-mode` first, then adds `/reflex-debug-mode` only if the core spine is reliable.
 
 ### 12.5 Demo Ownership
 
@@ -1587,11 +1714,13 @@ Slack should never infer progress locally. Each thread update should come from t
 | Diagnosis and hypothesis tree | Yash | Use deterministic hardcoded diagnosis from the confirmed package |
 | Reproduction and fix evidence | Luke | Use precomputed logs and seeded patch |
 | GitHub PR output | Luke | Use an already-open demo PR link |
+| Dashboard run list and detail page | Yash | Use seeded InsForge rows and pre-uploaded artifacts |
 | Final pipeline walkthrough | Laurence | Walk through Slack bot update thread updates and stored InsForge run states |
 
 ### 12.6 Missing Decisions
 
 - Has the seeded export-hang bug been committed to `https://github.com/yxshrk/electron` with a deterministic failing repro?
+- Who owns Vercel deployment for the webhook/API and tiny read-only dashboard?
 - Is the primary demo input a Slack screenshot attachment, a recording attachment, or just fetched Slack history?
 - Which fields are mandatory in the bug report before diagnosis: actual behavior, expected behavior, affected surface, and location?
 - Which model path generates the diagnosis JSON: InsForge Model Gateway or a direct model API?
@@ -1612,6 +1741,7 @@ The MVP is done when the team can start from `/reflex-bug-mode` and reach a real
 - Reproduction evidence.
 - Fix summary.
 - PR URL.
+- Dashboard run detail showing the same chat history, attachments, timeline, diagnosis, evidence, and PR.
 
 ## 13. Build / Fake / Name Cuts
 
@@ -1620,6 +1750,7 @@ Build:
 - Slack slash command and bot update thread updates.
 - Minimal webhook/API routes.
 - InsForge-backed run persistence.
+- `run_events` timeline persistence.
 - Bug report drafting and Slack confirmation.
 - Debug-mode recording upload when time allows.
 - Structured symptom to hypothesis tree for the rehearsed report.
@@ -1627,6 +1758,7 @@ Build:
 - Minimal code fix or seeded patch.
 - Pull request creation.
 - Pipeline status in Slack.
+- Tiny read-only dashboard with run list and run detail pages.
 
 Fake:
 
@@ -1635,7 +1767,7 @@ Fake:
 - Pre-warmed sandbox startup where needed.
 - Pre-indexed repository context.
 - Parallel agent fan-out if programmatic access is slow.
-- Optional Vercel status page if the Slack bot update thread already tells the full story.
+- Pre-seeded dashboard rows if the live pipeline is slow.
 
 Name:
 
@@ -1664,6 +1796,7 @@ Name:
 - Given a structured export-hang symptom, the orchestrator dispatches expected sandbox tasks.
 - Given a seeded large dataset, the reproduction command fails before the fix and passes after the fix.
 - Given a successful fix, a PR record is created with verification notes.
+- Given a stored run, `/dashboard/{runId}` shows the same chat history, attachments, timeline, diagnosis, evidence, and PR that Slack references.
 
 ### Demo Acceptance Test
 
@@ -1676,6 +1809,7 @@ The demo is ready when the team can run this script three times in a row:
 5. Confirm at least one sandbox reproduces the bug.
 6. Confirm the fix is generated.
 7. Open the PR and show the evidence.
+8. Open `/dashboard/{runId}` and show the stored context, timeline, diagnosis, evidence, and PR.
 
 Debug mode is ready when the team can also run:
 
@@ -1722,7 +1856,7 @@ Production requirements would include screenshot/video redaction, data retention
 - Which InsForge project should be linked for the demo, and what service credentials should the webhook/API layer use?
 - Which Slack workspace and bot credentials should receive the `/reflex-bug-mode` and `/reflex-debug-mode` commands?
 - Do we want a mobile stretch demo, or should Limrun remain a roadmap extension only?
-- Do we want a Vercel `/run/:id` status page, or should Vercel remain a roadmap extension only?
+- Where is the tiny dashboard deployed: Vercel with the webhook/API, or local-only for the hackathon demo?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
 
 ## 18. Hackathon Demo Script
@@ -1748,6 +1882,7 @@ Demo:
 9. Show the sandbox reproducing the hang.
 10. Show the fix summary and passing verification.
 11. Open the PR linked in the Reflex bot update thread.
+12. Open `/dashboard/{runId}` and show the stored chat history, attachments, timeline, diagnosis, agent evidence, and PR metadata.
 
 Optional debug-mode beat:
 
@@ -1771,6 +1906,7 @@ The hackathon project is successful if judges see:
 - Parallel or sandboxed agent investigation.
 - Reproduction evidence before the fix.
 - A real PR that ties the fix back to the original report.
+- A dashboard detail page showing the stored chat history, attachments, timeline, diagnosis, agent evidence, and PR metadata for the same run.
 
 The minimum winning spine is:
 

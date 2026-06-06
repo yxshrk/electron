@@ -145,6 +145,15 @@ Reproduction shape:
 - apply a bounded query, pagination, streaming, or timeout-safe path
 - verify export completes under the demo timeout
 
+Required artifacts:
+
+- failing repro command or test that fails before the fix
+- seeded data fixture large enough to trigger the failure deterministically
+- known minimal patch for `scripted-fallback.ts`
+- verification command that passes after the fix
+- PR body template with source run, evidence summary, root cause, fix summary, and verification
+- pre-opened fallback PR link in case live Replicas or GitHub is slow
+
 The demo should show proof. The PR should not look like a guess from a vague prompt.
 
 ## Status Mapping
@@ -172,11 +181,12 @@ Yash persists the state and Laurence renders it in Slack.
 
 1. Update `agent/replicas/types.ts` and samples to use `runId` and `intakePackageId`.
 2. Build the dry-run prompt formatter from `DispatchInput`.
-3. Build the scripted fallback PR path.
-4. Implement `POST /api/runs/{runId}/dispatch-replicas`.
-5. Implement `POST /api/replicas/callback`.
-6. Add live Replicas dispatch if credentials/environment are ready.
-7. Rehearse the PR path with a pre-opened fallback PR available.
+3. Add the deterministic export-hang fixture, failing repro command, and verification command.
+4. Build the scripted fallback PR path.
+5. Implement `POST /api/runs/{runId}/dispatch-replicas`.
+6. Implement `POST /api/replicas/callback`.
+7. Add live Replicas dispatch if credentials/environment are ready.
+8. Rehearse the PR path with a pre-opened fallback PR available.
 
 ## Demo Fallbacks
 
