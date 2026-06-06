@@ -8,7 +8,7 @@ The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on
 
 One-line judge pitch:
 
-> Run `/reflex-bug-mode` right after the customer issue appears in Slack. Reflex drafts the bug brief from nearby Slack context, asks for one confirmation, dispatches a coding agent, and returns a PR with reproduction evidence.
+> Run `/reflex-bug-mode` right after the customer issue appears in Slack. Reflex drafts a bug report from nearby Slack context and attachments, asks for one confirmation, dispatches a coding agent, and returns a PR with reproduction evidence.
 
 ## 2. Problem Statement
 
@@ -57,11 +57,11 @@ Do not add Supabase for the MVP. InsForge already provides the backend layer Ref
 | --- | --- | --- |
 | Primary UI | Slack | Slash command, thread updates, screenshot or recording attachments, final PR link |
 | Intake API | Minimal webhook/API layer | Receive Slack commands/events and normalize reports |
-| Orchestration | Minimal webhook/API layer | Draft bug brief, collect confirmation, create diagnosis, dispatch agent work, update run state |
+| Orchestration | Minimal webhook/API layer | Draft bug report, collect confirmation, create diagnosis, dispatch agent work, update run state |
 | Database | InsForge Postgres | Runs, observations, diagnoses, hypotheses, agent runs, PR metadata |
 | File storage | InsForge Storage | Screenshots, videos, recordings, logs, reproduction evidence |
 | Live updates | Slack thread updates | Show observe, diagnose, dispatch, reproduce, fix, and ship status |
-| AI/model access | InsForge Model Gateway or direct model API | Draft bug brief and generate diagnosis JSON |
+| AI/model access | InsForge Model Gateway or direct model API | Draft bug report and generate diagnosis JSON |
 | Agent execution | Replicas | Run sandboxed background coding tasks and produce fix evidence |
 | PR output | GitHub API | Create branches, commits, and pull requests |
 | Optional status UI | Vercel / Next.js | Tiny `/run/:id` page or fuller dashboard only if time allows |
@@ -72,8 +72,11 @@ Minimum demo loop:
 Slack /reflex-bug-mode command
 -> /api/slack/reflex-bug-mode
 -> InsForge stores run state
--> /api/runs/{runId}/draft-bug-brief creates a compact brief
--> user confirms or edits the brief in Slack
+-> Reflex fetches nearby Slack chat history and attachment metadata
+-> InsForge stores chat context and attachment records
+-> /api/runs/{runId}/draft-bug-brief creates a compact bug report
+-> user confirms, edits, or adds more attachments in Slack
+-> InsForge stores the confirmed intake package
 -> /api/runs/{runId}/diagnose creates structured symptom
 -> /api/runs/{runId}/dispatch-replicas starts a Replicas task or scripted sandbox fallback
 -> InsForge stores run status and evidence
@@ -157,13 +160,17 @@ flowchart LR
     SlackAPI --> RunCreate["POST /api/runs"]
     RunCreate --> DB["InsForge Postgres"]
     RunCreate --> Storage["InsForge Storage"]
+    SlackAPI --> Context["POST /api/runs/{runId}/context"]
+    Context --> DB
     SlackFile --> Media["POST /api/runs/{runId}/media"]
     Media --> Storage
     Media --> DB
     DB --> Brief["POST /api/runs/{runId}/draft-bug-brief"]
-    Brief --> Confirm["Slack confirm/edit"]
+    Brief --> Confirm["Slack confirm/edit/add attachment"]
     Confirm --> ConfirmAPI["POST /api/slack/interactions"]
-    ConfirmAPI --> Diagnose["POST /api/runs/{runId}/diagnose"]
+    ConfirmAPI --> Package["POST /api/runs/{runId}/intake-package"]
+    Package --> DB
+    Package --> Diagnose["POST /api/runs/{runId}/diagnose"]
     Diagnose --> Model["InsForge Model Gateway or direct LLM"]
     Diagnose --> Hypotheses["Hypotheses + reproduction plan"]
     Hypotheses --> Dispatch["POST /api/runs/{runId}/dispatch-replicas"]
@@ -190,8 +197,9 @@ Responsibilities:
 - Default the MVP role to `sales_csm` and repo to `https://github.com/yxshrk/electron`.
 - Treat optional command text as a hint, not as a required form.
 - Read the latest 10 channel messages before the command and latest 3 nearby attachments as the source context.
+- Copy fetched chat history and attachment metadata into InsForge before drafting.
 - Accept screenshots or recordings as Slack attachments when available.
-- Ask the user to confirm or edit a compact bug brief before diagnosis starts.
+- Ask the user to confirm, edit, or add attachments to a compact bug report before diagnosis starts.
 - Reply with a bot message and use that message thread for pipeline status.
 - Show the final PR link in the same thread.
 
@@ -203,18 +211,18 @@ Hackathon discipline:
 
 #### Clarification Gate
 
-Purpose: Turn messy Slack history into a confirmed, compact bug brief before spending tokens on diagnosis or agent execution.
+Purpose: Turn messy Slack history into a confirmed, compact bug report before spending tokens on diagnosis or agent execution.
 
 Responsibilities:
 
 - Read the slash command, latest 10 nearby Slack messages, and latest 3 attachment metadata records.
-- Include screenshots and videos as evidence artifacts.
-- Generate a short bug brief with placeholders for unclear details.
-- Ask the user to confirm or edit the brief in Slack.
-- Block diagnosis until the bug brief is confirmed.
-- Store both the draft and confirmed brief in InsForge.
+- Include screenshots and videos as evidence artifacts, copied into InsForge Storage when possible.
+- Generate a short bug report with placeholders for unclear details.
+- Ask the user to confirm, edit the report, or add more attachments in Slack.
+- Block diagnosis until the bug report is confirmed.
+- Store both the draft and confirmed report in InsForge.
 
-Bug brief fields:
+Bug report fields:
 
 ```text
 where_it_happens
@@ -232,10 +240,37 @@ agent_prompt_preview
 Hackathon discipline:
 
 - The clarification step should ask for confirmation, not start a long chat.
-- Use one Slack message with Confirm and Edit actions.
+- Use one Slack message with Confirm, Edit Report, and Add Attachment actions.
 - If the user confirms, continue automatically.
-- If the user edits, update the brief and continue from the confirmed version.
+- If the user edits, update the report and continue from the confirmed version.
+- If the user adds attachments, store them in InsForge Storage, append them to the evidence list, and re-render the same confirmation message.
 - The confirmation message should say exactly what context was used, for example: "I used the `/reflex-bug-mode` command, 8 channel messages, and 2 attached files."
+
+#### Intake Package
+
+Purpose: Give the backend one complete, confirmed object before any fix work starts.
+
+Responsibilities:
+
+- Bundle the confirmed bug report, fetched chat history, attachment records, and storage URLs.
+- Persist the full package in InsForge so diagnosis, Replicas, PR metadata, and demo replay all use the same source of truth.
+- Preserve raw Slack message IDs and file IDs for traceability.
+- Mark the package `confirmed` only after the user clicks Confirm.
+
+Package contents:
+
+```text
+run_id
+confirmed_report
+chat_history_messages
+media_artifacts
+source_command
+slack_channel_id
+slack_update_thread_ts
+context_window
+confirmed_by
+confirmed_at
+```
 
 #### Minimal Webhook/API Layer
 
@@ -243,7 +278,7 @@ Purpose: Normalize Slack input and orchestrate the Reflex pipeline.
 
 Responsibilities:
 
-- Serve `/api/slack/reflex-bug-mode`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, and `/api/replicas/callback`.
+- Serve `/api/slack/reflex-bug-mode`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}/context`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/intake-package`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, and `/api/replicas/callback`.
 - Call InsForge SDK or REST APIs for database and storage state.
 - Call the model path for diagnosis.
 - Dispatch Replicas or the scripted fallback.
@@ -439,7 +474,21 @@ Memory graph concept:
 | `created_at` | Timestamp | Run start time |
 | `completed_at` | Timestamp | Run completion time |
 
-### 7.2 `observations`
+### 7.2 `slack_context_messages`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID | Context message identifier |
+| `run_id` | UUID | Parent Reflex run |
+| `slack_message_ts` | Text | Slack message timestamp |
+| `slack_user_id` | Text | Slack user ID, if available |
+| `text` | Text | Message text copied from Slack |
+| `permalink` | Text | Slack permalink, if available |
+| `has_files` | Boolean | Whether the message contains files |
+| `raw_payload` | JSON | Minimal raw Slack message payload for traceability |
+| `created_at` | Timestamp | Copy time |
+
+### 7.3 `observations`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -450,7 +499,7 @@ Memory graph concept:
 | `visible_state` | JSON | Extracted UI state |
 | `created_at` | Timestamp | Observation time |
 
-### 7.3 `media_artifacts`
+### 7.4 `media_artifacts`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -458,15 +507,16 @@ Memory graph concept:
 | `run_id` | UUID | Parent Reflex run |
 | `artifact_key` | Text | Human-readable key, such as `media_run_export_hang_01_screenshot_1` |
 | `kind` | Text | `screenshot`, `video`, `screen_recording`, `log`, or `other` |
-| `source` | Text | `slack_file`, `upload`, `replicas`, or `manual` |
+| `source` | Text | `slack_file`, `manual_upload`, `replicas`, or `manual` |
 | `storage_url` | Text | InsForge Storage URL or object reference |
 | `slack_file_id` | Text | Original Slack file ID if applicable |
+| `slack_message_ts` | Text | Slack message timestamp where the file appeared, if applicable |
 | `thumbnail_url` | Text | Optional preview image for Slack/status UI |
 | `summary` | Text | Compact human/model-readable summary |
 | `safe_to_share` | Boolean | Whether this artifact can be linked from PR/debug output |
 | `created_at` | Timestamp | Artifact creation time |
 
-### 7.4 `bug_briefs`
+### 7.5 `bug_briefs`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -485,19 +535,36 @@ Memory graph concept:
 | `created_at` | Timestamp | Brief creation time |
 | `confirmed_at` | Timestamp | Confirmation time |
 
-### 7.5 `diagnoses`
+### 7.6 `intake_packages`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID | Intake package identifier |
+| `run_id` | UUID | Parent Reflex run |
+| `bug_brief_id` | UUID | Confirmed report used for the package |
+| `package_key` | Text | Human-readable key, such as `pkg_run_export_hang_01` |
+| `chat_history` | JSON | Ordered copied Slack messages used for diagnosis |
+| `media_artifacts` | JSON | Ordered attachment and storage references |
+| `confirmed_report` | JSON | Confirmed bug report fields shown to the user |
+| `status` | Text | Draft, confirmed, or superseded |
+| `confirmed_by` | Text | Slack user ID that confirmed the package |
+| `created_at` | Timestamp | Package creation time |
+| `confirmed_at` | Timestamp | Confirmation time |
+
+### 7.7 `diagnoses`
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Diagnosis identifier |
 | `run_id` | UUID | Parent Reflex run |
-| `bug_brief_id` | UUID | Confirmed bug brief used for diagnosis |
+| `bug_brief_id` | UUID | Confirmed report record used for diagnosis |
+| `intake_package_id` | UUID | Confirmed report, chat history, and attachments used for diagnosis |
 | `symptom` | Text | Structured engineering symptom |
 | `role_lens` | Text | Role-specific translation strategy |
 | `evidence` | JSON | Evidence extracted from screen and transcript |
 | `created_at` | Timestamp | Diagnosis time |
 
-### 7.6 `hypotheses`
+### 7.8 `hypotheses`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -508,7 +575,7 @@ Memory graph concept:
 | `reproduction_plan` | Text | Sandbox instructions |
 | `status` | Text | Pending, running, reproduced, rejected, fixed |
 
-### 7.7 `agent_runs`
+### 7.9 `agent_runs`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -521,7 +588,7 @@ Memory graph concept:
 | `created_at` | Timestamp | Run start time |
 | `completed_at` | Timestamp | Run completion time |
 
-### 7.8 `pull_requests`
+### 7.10 `pull_requests`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -533,7 +600,7 @@ Memory graph concept:
 | `verification` | Text | Tests or reproduction evidence |
 | `created_at` | Timestamp | PR creation time |
 
-### 7.9 MVP Migration Shape
+### 7.11 MVP Migration Shape
 
 The MVP can start with straightforward Postgres tables and JSON payload columns. Keep the schema explicit enough for the UI and demo, then normalize later only if the product grows.
 
@@ -554,6 +621,18 @@ create table reflex_runs (
   completed_at timestamptz
 );
 
+create table slack_context_messages (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  slack_message_ts text not null,
+  slack_user_id text,
+  text text not null default '',
+  permalink text,
+  has_files boolean not null default false,
+  raw_payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create table observations (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references reflex_runs(id) on delete cascade,
@@ -571,6 +650,7 @@ create table media_artifacts (
   source text not null default 'slack_file',
   storage_url text not null,
   slack_file_id text,
+  slack_message_ts text,
   thumbnail_url text,
   summary text,
   safe_to_share boolean not null default false,
@@ -594,10 +674,25 @@ create table bug_briefs (
   confirmed_at timestamptz
 );
 
+create table intake_packages (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  bug_brief_id uuid not null references bug_briefs(id) on delete cascade,
+  package_key text not null unique,
+  chat_history jsonb not null default '[]'::jsonb,
+  media_artifacts jsonb not null default '[]'::jsonb,
+  confirmed_report jsonb not null default '{}'::jsonb,
+  status text not null default 'draft',
+  confirmed_by text,
+  created_at timestamptz not null default now(),
+  confirmed_at timestamptz
+);
+
 create table diagnoses (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references reflex_runs(id) on delete cascade,
   bug_brief_id uuid not null references bug_briefs(id) on delete cascade,
+  intake_package_id uuid not null references intake_packages(id) on delete cascade,
   symptom text not null,
   role_lens text not null,
   evidence jsonb not null default '[]'::jsonb,
@@ -646,6 +741,7 @@ Use `run` for the whole Reflex pipeline and `task` for external execution work. 
 | --- | --- | --- |
 | Reflex run | `run_{shortId}` | `run_export_hang_01` |
 | Bug brief | `brief_{runId}` | `brief_run_export_hang_01` |
+| Intake package | `pkg_{runId}` | `pkg_run_export_hang_01` |
 | Media artifact | `media_{runId}_{kind}_{index}` | `media_run_export_hang_01_screenshot_1` |
 | Diagnosis | `diag_{shortId}` | `diag_export_hang_01` |
 | Hypothesis | `hyp_{rank}_{slug}` | `hyp_1_unbounded_export_query` |
@@ -657,7 +753,7 @@ Use `run` for the whole Reflex pipeline and `task` for external execution work. 
 Status values:
 
 ```text
-created -> observed -> clarifying -> brief_drafted -> confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
+created -> context_stored -> clarifying -> report_drafted -> package_confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
 ```
 
 Failure values:
@@ -702,12 +798,13 @@ Optional Slack Events API endpoint for attachments, threaded replies, and messag
 
 ### `POST /api/slack/interactions`
 
-Receives Slack button clicks or modal submissions from the bug brief confirmation message.
+Receives Slack button clicks or modal submissions from the bug report confirmation message.
 
 Actions:
 
-- `confirm_bug_brief`: confirm the drafted brief and continue to diagnosis.
-- `edit_bug_brief`: submit corrected fields, then confirm and continue.
+- `confirm_bug_brief`: confirm the drafted report and continue to intake package creation.
+- `edit_bug_brief`: submit corrected report fields, then confirm and continue.
+- `add_attachment`: let the user add more screenshot, video, or recording evidence before confirmation.
 
 Request shape after normalization:
 
@@ -716,7 +813,8 @@ Request shape after normalization:
   "runId": "run_export_hang_01",
   "action": "confirm_bug_brief",
   "bugBriefId": "brief_run_export_hang_01",
-  "editedFields": null
+  "editedFields": null,
+  "additionalMediaArtifactIds": []
 }
 ```
 
@@ -754,9 +852,47 @@ Response:
 }
 ```
 
+### `POST /api/runs/{runId}/context`
+
+Stores the Slack context that Reflex automatically fetched before drafting the report. This is the backend copy of the chat history and attachment references, not just prompt text.
+
+Request:
+
+```json
+{
+  "messages": [
+    {
+      "slackMessageTs": "1710000000.000100",
+      "slackUserId": "U123",
+      "text": "Customer says export hangs on large reports.",
+      "permalink": "https://example.slack.com/archives/C123/p1710000000000100",
+      "hasFiles": true
+    }
+  ],
+  "attachments": [
+    {
+      "slackFileId": "F123",
+      "slackMessageTs": "1710000000.000100",
+      "kind": "video",
+      "filename": "export-crash.mov"
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "storedMessages": 8,
+  "storedAttachments": 2,
+  "status": "stored"
+}
+```
+
 ### `POST /api/runs/{runId}/draft-bug-brief`
 
-Reads the Slack command text, nearby Slack history, and attachment references, then drafts a compact bug brief for user confirmation. This route exists to avoid wasting model and agent tokens on the wrong interpretation of the bug.
+Reads the Slack command text, nearby Slack history, and attachment references, then drafts a compact bug report for user confirmation. This route exists to avoid wasting model and agent tokens on the wrong interpretation of the bug.
 
 Request:
 
@@ -814,12 +950,12 @@ Expected: Export should complete or show progress.
 Surface: frontend
 Evidence: video shows export click -> spinner -> frontend crash; screenshot shows stuck loading state.
 
-[Confirm] [Edit]
+[Confirm] [Edit Report] [Add Attachment]
 ```
 
 ### `POST /api/runs/{runId}/confirm-bug-brief`
 
-Confirms the bug brief, optionally with edited fields from Slack. Diagnosis must only run after this succeeds.
+Confirms the bug report, optionally with edited fields or additional attachments from Slack. Diagnosis must only run after the confirmed intake package exists.
 
 Request:
 
@@ -828,7 +964,11 @@ Request:
   "bugBriefId": "brief_run_export_hang_01",
   "editedFields": {
     "actualBehavior": "When export starts, the frontend crashes instead of just hanging."
-  }
+  },
+  "additionalMediaArtifactIds": [
+    "media_run_export_hang_01_screenshot_2"
+  ],
+  "confirmedBy": "U123"
 }
 ```
 
@@ -837,7 +977,39 @@ Response:
 ```json
 {
   "bugBriefId": "brief_run_export_hang_01",
+  "intakePackageId": "pkg_run_export_hang_01",
   "status": "confirmed"
+}
+```
+
+### `POST /api/runs/{runId}/intake-package`
+
+Creates or returns the confirmed backend package that diagnosis and Replicas must use. The package includes the final report, copied chat history, media artifact records, and Slack source metadata.
+
+Request:
+
+```json
+{
+  "bugBriefId": "brief_run_export_hang_01",
+  "includeChatHistory": true,
+  "includeMediaArtifacts": true
+}
+```
+
+Response:
+
+```json
+{
+  "intakePackageId": "pkg_run_export_hang_01",
+  "status": "confirmed",
+  "confirmedReport": {
+    "whereItHappens": "Report export screen",
+    "actualBehavior": "When export starts, the frontend crashes.",
+    "expectedBehavior": "Export should complete or show progress.",
+    "affectedSurface": "frontend"
+  },
+  "chatHistoryMessageCount": 8,
+  "mediaArtifactCount": 3
 }
 ```
 
@@ -894,7 +1066,15 @@ Response:
 
 ### `POST /api/runs/{runId}/diagnose`
 
-Generates a structured symptom and hypothesis tree from the confirmed bug brief. This route should reject runs that do not have a confirmed bug brief.
+Generates a structured symptom and hypothesis tree from the confirmed intake package. This route should reject runs that do not have a confirmed bug report package.
+
+Request:
+
+```json
+{
+  "intakePackageId": "pkg_run_export_hang_01"
+}
+```
 
 Response:
 
@@ -902,6 +1082,7 @@ Response:
 {
   "diagnosisId": "diag_export_hang_01",
   "bugBriefId": "brief_run_export_hang_01",
+  "intakePackageId": "pkg_run_export_hang_01",
   "symptom": "Report export hangs on large datasets",
   "hypotheses": [
     {
@@ -987,23 +1168,27 @@ Event examples:
 1. CSM runs `/reflex-bug-mode` in the Slack channel right after the customer issue appears.
 2. Reflex immediately creates a run with default role `sales_csm` and default repo `https://github.com/yxshrk/electron`.
 3. Slack sends the command to `/api/slack/reflex-bug-mode`.
-4. The API normalizes the command, latest 10 channel messages, and latest 3 attachments into `POST /api/runs`.
-5. Slack file attachments are copied to InsForge Storage and registered through `POST /api/runs/{runId}/media`.
-6. `POST /api/runs/{runId}/draft-bug-brief` drafts one compact bug brief from the Slack context and media summaries.
-7. Slack asks the user to Confirm or Edit the brief and clearly shows the context used.
-8. User confirms the bug brief through `POST /api/slack/interactions`.
-9. Diagnosis service creates the symptom from the confirmed brief: "Report export hangs on large datasets."
-10. Diagnosis service ranks hypotheses: unbounded query, missing pagination, or request timeout mismatch.
-11. Orchestrator dispatches one Replicas task for the top hypothesis.
-12. Replicas seeds a large dataset, reproduces the hang, writes a minimal fix, and runs verification.
-13. GitHub PR opens with reproduction evidence and a link to the source Slack run.
-14. The Reflex bot update thread receives the PR URL and final verification summary.
+4. The API normalizes the command into `POST /api/runs`.
+5. Reflex fetches the latest 10 channel messages and latest 3 nearby attachments, then stores them through `POST /api/runs/{runId}/context`.
+6. Slack file attachments are copied to InsForge Storage and registered through `POST /api/runs/{runId}/media`.
+7. `POST /api/runs/{runId}/draft-bug-brief` drafts one compact bug report from the Slack context and media summaries.
+8. Slack asks the user to Confirm, Edit Report, or Add Attachment, and clearly shows the context used.
+9. If the report is wrong, the user edits fields manually or uploads more attachments into the bot update thread.
+10. User confirms the report through `POST /api/slack/interactions`.
+11. `POST /api/runs/{runId}/intake-package` stores the confirmed report, copied chat history, and attachments as the backend source of truth.
+12. Diagnosis service creates the symptom from the confirmed package: "Report export hangs on large datasets."
+13. Diagnosis service ranks hypotheses: unbounded query, missing pagination, or request timeout mismatch.
+14. Orchestrator dispatches one Replicas task for the top hypothesis.
+15. Replicas seeds a large dataset, reproduces the hang, writes a minimal fix, and runs verification.
+16. GitHub PR opens with reproduction evidence and a link to the source Slack run.
+17. The Reflex bot update thread receives the PR URL and final verification summary.
 
 The simplest user-facing flow is:
 
 ```text
 /reflex-bug-mode
--> Confirm bug brief
+-> Confirm or edit generated bug report
+-> Backend receives report + chat history + attachments
 -> Watch Replicas produce a PR
 ```
 
@@ -1044,11 +1229,12 @@ Recommended product-role feature:
 - Read the latest 10 channel messages and latest 3 attachments.
 - Reply immediately with a run ID and "started" status.
 - Normalize the command into the internal `POST /api/runs` payload.
-- Draft a bug brief and ask the user to confirm or edit it in Slack.
+- Store fetched chat context and attachment metadata in InsForge.
+- Draft a bug report and ask the user to confirm, edit, or add attachments in Slack.
 
 Success criterion:
 
-- A user can start a Reflex run from Slack and confirm the bug brief in the bot update thread.
+- A user can start a Reflex run from Slack and confirm the bug report in the bot update thread.
 
 ### Phase 2: Connect InsForge
 
@@ -1067,10 +1253,12 @@ Success criterion:
 ### Phase 3: Build the Happy Path
 
 - Implement `POST /api/runs`.
+- Implement `POST /api/runs/{runId}/context`.
 - Implement `POST /api/runs/{runId}/media`.
 - Implement `POST /api/runs/{runId}/draft-bug-brief`.
 - Implement `POST /api/slack/interactions`.
 - Implement `POST /api/runs/{runId}/confirm-bug-brief`.
+- Implement `POST /api/runs/{runId}/intake-package`.
 - Implement `POST /api/runs/{runId}/diagnose`.
 - Implement `POST /api/runs/{runId}/dispatch-replicas`.
 - Use a rehearsed transcript and seeded repo bug for deterministic behavior.
@@ -1132,8 +1320,8 @@ The team should split by interface boundaries, not by page sections. Each person
 | Owner | Primary Scope | Must Deliver | Depends On |
 | --- | --- | --- | --- |
 | Yash | Slack attachment and recording capture UX | Screenshot/video/recording attachment flow, optional capture page, upload-ready media payload | `/reflex-bug-mode`, `POST /api/runs`, and `POST /api/runs/{runId}/media` contracts |
-| Luke | Slack webhook/API, InsForge backend, clarification gate, orchestration state | `/api/slack/reflex-bug-mode`, InsForge schema, bug brief confirmation, state machine, Slack thread updates | InsForge and Slack credentials |
-| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Confirmed bug brief and hypothesis contract |
+| Luke | Slack webhook/API, InsForge backend, clarification gate, orchestration state | `/api/slack/reflex-bug-mode`, chat context fetch, InsForge schema, intake package confirmation, state machine, Slack thread updates | InsForge and Slack credentials |
+| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Confirmed intake package and hypothesis contract |
 
 ### 12.2 Workstream Contracts
 
@@ -1146,6 +1334,12 @@ Yash to Luke:
   "role": "sales_csm",
   "repoUrl": "https://github.com/yxshrk/electron",
   "transcript": "Customer says export hangs on large reports.",
+  "chatHistoryMessages": [
+    {
+      "slackMessageTs": "1710000000.000100",
+      "text": "Customer says export hangs on large reports."
+    }
+  ],
   "mediaArtifacts": [
     {
       "kind": "video",
@@ -1170,7 +1364,12 @@ Luke to Laurence:
   "runId": "run_export_hang_01",
   "repoUrl": "https://github.com/yxshrk/electron",
   "role": "sales_csm",
-  "bugBrief": {
+  "intakePackage": {
+    "id": "pkg_run_export_hang_01",
+    "chatHistoryMessageCount": 8,
+    "mediaArtifactCount": 3
+  },
+  "confirmedReport": {
     "id": "brief_run_export_hang_01",
     "whereItHappens": "Report export screen",
     "actualBehavior": "When the user exports a large report, the frontend hangs or crashes.",
@@ -1214,7 +1413,7 @@ Laurence to Luke:
 Every pipeline stage should be stored on `reflex_runs.status` and mirrored in Slack.
 
 ```text
-created -> observed -> clarifying -> brief_drafted -> confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
+created -> context_stored -> clarifying -> report_drafted -> package_confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
 ```
 
 Failure states:
@@ -1232,13 +1431,14 @@ Slack should never infer progress locally. Each thread update should come from t
 ### 12.4 Build Order for Three People
 
 1. Luke creates the Slack app endpoint, InsForge connection, schema, and `POST /api/runs`.
-2. Yash validates the screenshot or recording attachment flow in Slack, then adds an optional capture page only if time allows.
-3. Laurence creates the seeded bug path and a local script or API utility that can produce a PR from a known fix.
-4. Luke adds `POST /api/runs/{runId}/draft-bug-brief`, `POST /api/slack/interactions`, and `POST /api/runs/{runId}/confirm-bug-brief`.
-5. Luke adds `POST /api/runs/{runId}/diagnose` from the confirmed bug brief.
-6. Luke and Laurence connect `POST /api/runs/{runId}/dispatch-replicas` to the reproduction/fix/PR path.
-7. Luke posts run status updates back to the Slack bot update thread.
-8. Everyone rehearses the same script three times and removes any live dependency that flakes.
+2. Luke adds Slack chat history fetch, attachment metadata fetch, and `POST /api/runs/{runId}/context`.
+3. Yash validates the screenshot or recording attachment flow in Slack, including Add Attachment before confirmation.
+4. Laurence creates the seeded bug path and a local script or API utility that can produce a PR from a known fix.
+5. Luke adds `POST /api/runs/{runId}/draft-bug-brief`, `POST /api/slack/interactions`, `POST /api/runs/{runId}/confirm-bug-brief`, and `POST /api/runs/{runId}/intake-package`.
+6. Luke adds `POST /api/runs/{runId}/diagnose` from the confirmed intake package.
+7. Luke and Laurence connect `POST /api/runs/{runId}/dispatch-replicas` to the reproduction/fix/PR path.
+8. Luke posts run status updates back to the Slack bot update thread.
+9. Everyone rehearses the same script three times and removes any live dependency that flakes.
 
 ### 12.5 Demo Ownership
 
@@ -1246,8 +1446,9 @@ Slack should never infer progress locally. Each thread update should come from t
 | --- | --- | --- |
 | Slack bug-mode command and attachment | Yash / Luke | Use a static Slack message and screenshot URL |
 | Run creation and persistence | Luke | Use seeded run row in InsForge |
-| Bug brief confirmation | Luke | Use a prefilled brief and click Confirm |
-| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis from the confirmed brief |
+| Bug report confirmation | Luke | Use a prefilled report and click Confirm |
+| Confirmed intake package | Luke | Use seeded chat history and attachment records in InsForge |
+| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis from the confirmed package |
 | Reproduction and fix evidence | Laurence | Use precomputed logs and seeded patch |
 | GitHub PR output | Laurence | Use an already-open demo PR link |
 | Final pipeline walkthrough | Luke | Walk through Slack bot update thread updates and stored InsForge run states |
@@ -1256,7 +1457,7 @@ Slack should never infer progress locally. Each thread update should come from t
 
 - Which exact repository contains the seeded demo bug?
 - Is the primary demo input a Slack screenshot attachment, a recording attachment, or both?
-- Which fields are mandatory in the bug brief before diagnosis: actual behavior, expected behavior, affected surface, and location?
+- Which fields are mandatory in the bug report before diagnosis: actual behavior, expected behavior, affected surface, and location?
 - Which model path generates the diagnosis JSON: InsForge Model Gateway or a direct model API?
 - What GitHub token can create branches and PRs for the demo repo?
 - What InsForge project is linked, and who owns the project credentials?
@@ -1269,7 +1470,7 @@ The MVP is done when the team can start from `/reflex-bug-mode` and reach a real
 
 - Original Slack bug-mode report with default role `sales_csm`.
 - Screenshot or recording reference.
-- Confirmed bug brief.
+- Confirmed intake package with bug report, chat history, and attachments.
 - Structured symptom.
 - At least one hypothesis.
 - Reproduction evidence.
@@ -1283,7 +1484,7 @@ Build:
 - Slack slash command and bot update thread updates.
 - Minimal webhook/API routes.
 - InsForge-backed run persistence.
-- Bug brief drafting and Slack confirmation.
+- Bug report drafting and Slack confirmation.
 - Structured symptom to hypothesis tree for the rehearsed report.
 - One deterministic reproduction path against a seeded repo.
 - Minimal code fix or seeded patch.
@@ -1313,7 +1514,7 @@ Name:
 ### Functional Tests
 
 - Diagnosis contract validates required fields.
-- Bug brief contract validates `where_it_happens`, `actual_behavior`, `affected_surface`, and confirmation status.
+- Bug report contract validates `where_it_happens`, `actual_behavior`, `affected_surface`, and confirmation status.
 - Role lens changes generated agent brief.
 - Hypotheses include reproduction plans.
 - Agent run state transitions from pending to running to reproduced or rejected.
@@ -1322,7 +1523,7 @@ Name:
 ### Integration Tests
 
 - Given a Slack sales transcript and screenshot/video evidence reference, diagnosis produces the expected symptom.
-- Given a vague Slack report, Reflex drafts a bug brief and waits for confirmation before diagnosis.
+- Given a vague Slack report, Reflex drafts a bug report and waits for package confirmation before diagnosis.
 - Given a structured export-hang symptom, the orchestrator dispatches expected sandbox tasks.
 - Given a seeded large dataset, the reproduction command fails before the fix and passes after the fix.
 - Given a successful fix, a PR record is created with verification notes.
@@ -1333,7 +1534,7 @@ The demo is ready when the team can run this script three times in a row:
 
 1. Start from the Slack `/reflex-bug-mode` command.
 2. Use the nearby Slack context and optional screenshot/video evidence.
-3. Confirm or edit the drafted bug brief in Slack.
+3. Confirm or edit the drafted bug report in Slack.
 4. Watch diagnosis and hypothesis updates appear in the Slack bot update thread.
 5. Confirm at least one sandbox reproduces the bug.
 6. Confirm the fix is generated.
@@ -1344,6 +1545,7 @@ The demo is ready when the team can run this script three times in a row:
 The hackathon implementation is not production-ready for sensitive screen data, but it should still follow basic safety rules:
 
 - Store only the screenshots/videos needed for the demo.
+- Store only the Slack messages inside the configured context window, not the full channel history.
 - Avoid capturing the entire desktop when a browser tab is enough.
 - Redact obvious secrets from transcript text.
 - Use scoped GitHub tokens for the demo repository only.
@@ -1359,7 +1561,7 @@ Production requirements would include screenshot/video redaction, data retention
 | Replicas programmatic dispatch is unavailable | Cannot automate parallel sandbox fan-out | Use manual or webhook-triggered task dispatch; keep one real sandbox path |
 | Devin API access is unavailable | Cannot show second-agent handoff | Keep Devin as roadmap or manually queued executor |
 | Slack command parsing is brittle | Intake fails during demo | Require no command arguments in the happy path; default role, repo, context, and media limits |
-| Clarification prompt is too verbose | User ignores confirmation or agent prompt bloats | Keep the bug brief to five fields plus one compact agent prompt preview |
+| Clarification prompt is too verbose | User ignores confirmation or agent prompt bloats | Keep the bug report to five fields plus one compact agent prompt preview |
 | Multimodal extraction is unreliable | Diagnosis may drift | Use Slack text as the source of truth and attachments as supporting evidence |
 | Sandbox startup is slow | Demo stalls | Pre-warm or show precomputed run if network fails |
 | Agent fixes wrong code | Demo loses credibility | Use seeded bugs with deterministic tests |
@@ -1388,7 +1590,7 @@ Demo:
 1. Run `/reflex-bug-mode` in the Slack channel right after the customer report.
 2. Attach or reference a screenshot/recording of the stuck export screen if available.
 3. Show the Reflex bot reply: run started.
-4. Show the drafted bug brief:
+4. Show the drafted bug report:
    - Where: report export screen.
    - Actual: exporting a large report hangs or crashes the frontend.
    - Expected: export completes or shows progress.
@@ -1410,7 +1612,7 @@ As an optional role-aware variant, run `/reflex-bug-mode role:ceo Reporting feel
 The hackathon project is successful if judges see:
 
 - A real source-of-truth Slack report with optional screen evidence.
-- A confirmed bug brief before diagnosis begins.
+- A confirmed intake package before diagnosis begins.
 - A clear role-aware translation into engineering language.
 - A ranked hypothesis tree.
 - Parallel or sandboxed agent investigation.
@@ -1420,7 +1622,7 @@ The hackathon project is successful if judges see:
 The minimum winning spine is:
 
 ```text
-confirmed bug brief -> structured symptom -> sandbox reproduction -> fix -> green PR
+confirmed intake package -> structured symptom -> sandbox reproduction -> fix -> green PR
 ```
 
 Everything before that spine can be scripted. Everything after that spine can be roadmap.
