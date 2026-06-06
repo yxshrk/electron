@@ -44,6 +44,7 @@ confirmed intake package
 ```text
 agent/replicas/types.ts
 agent/replicas/client.ts
+agent/replicas/prompt.ts
 agent/replicas/dispatch.ts
 agent/replicas/scripted-fallback.ts
 agent/run.ts
@@ -53,6 +54,8 @@ app/api/replicas/callback/route.ts
 ```
 
 Keep shared contract names aligned with `developer_plans/shared-contracts.md`.
+Use the Replicas Agent Prompt and PR Body Template in `TECHNICAL_DOCUMENT.md` as the canonical
+templates for `agent/replicas/prompt.ts` and the scripted fallback PR body.
 
 ## Dispatch Contract
 
@@ -180,7 +183,7 @@ Yash persists the state and Laurence renders it in Slack.
 ## Build Plan
 
 1. Update `agent/replicas/types.ts` and samples to use `runId` and `intakePackageId`.
-2. Build the dry-run prompt formatter from `DispatchInput`.
+2. Build the dry-run prompt formatter from `DispatchInput` using the canonical Replicas Agent Prompt.
 3. Add the deterministic export-hang fixture, failing repro command, and verification command.
 4. Build the scripted fallback PR path.
 5. Implement `POST /api/runs/{runId}/dispatch-replicas`.

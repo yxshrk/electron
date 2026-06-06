@@ -58,6 +58,7 @@ migrations/**
 lib/insforge/client.ts
 lib/insforge/types.ts
 lib/insforge/status.ts
+lib/diagnosis/prompts.ts
 lib/diagnosis/report.ts
 lib/diagnosis/diagnose.ts
 app/debug/[runId]/page.tsx
@@ -153,6 +154,7 @@ Store all artifacts in `media_artifacts` with `source = debug_capture`, and stor
 ## Bug Report Draft
 
 `POST /api/runs/{runId}/draft-bug-brief` produces a compact report for the user to confirm.
+Use the Bug Report Draft Prompt in `TECHNICAL_DOCUMENT.md` as the canonical template.
 
 Fields:
 
@@ -185,6 +187,7 @@ unconfirmed draft alone.
 ## Diagnosis
 
 `POST /api/runs/{runId}/diagnose` consumes the confirmed intake package.
+Use the Diagnosis Prompt in `TECHNICAL_DOCUMENT.md` as the canonical template.
 
 Output:
 
@@ -251,7 +254,7 @@ Build the dashboard as a read-only inspection layer:
 1. Create the migration, `run_events`, and `lib/insforge` typed client.
 2. Implement `POST /api/runs`.
 3. Implement context, media, and debug capture ingest routes.
-4. Implement report draft generation with deterministic fixture support.
+4. Implement `lib/diagnosis/prompts.ts`, report draft generation, and deterministic fixture support.
 5. Implement confirmation and `intake_packages`.
 6. Implement diagnosis and hypothesis creation.
 7. Implement `run_events`, run status polling/events, and dashboard read endpoints.

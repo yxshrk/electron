@@ -1359,6 +1359,311 @@ Event examples:
 { "eventType": "pr.opened", "status": "shipped", "url": "https://github.com/yxshrk/electron/pull/42" }
 ```
 
+### Prompt Templates
+
+Prompt templates are part of the technical contract. Keep them deterministic, short, and grounded in
+the confirmed data stored in InsForge. The implementation should keep these templates in code as
+versioned constants, for example `lib/diagnosis/prompts.ts` and `agent/replicas/prompt.ts`.
+
+Shared prompt rules:
+
+- Do not invent evidence. If a field is unknown, use `missingInfo`.
+- Prefer copied Slack message IDs, media artifact IDs, and storage URLs over prose-only references.
+- Keep the prompt context under `contextWindow.maxPromptChars`, default 6000 characters.
+- Use the latest 100 Slack messages as candidates, then select/summarize the relevant subset once.
+- Return valid JSON for model-generated backend objects.
+- Keep user-facing language concise enough to fit inside one Slack confirmation message.
+- Do not dispatch Replicas until the bug report has been confirmed and an `intake_packages` row exists.
+
+#### Bug Report Draft Prompt
+
+Used by `POST /api/runs/{runId}/draft-bug-brief`.
+
+System prompt:
+
+```text
+You are Reflex, a bug-intake assistant for engineering teams.
+
+Your job is to convert messy Slack/debug context into a compact bug report that a human can confirm.
+Do not diagnose root cause yet. Do not propose code changes yet. Do not invent facts.
+
+If important details are missing, put them in missingInfo instead of guessing.
+Return only JSON that matches the requested schema.
+```
+
+User prompt template:
+
+```text
+Create a confirmable bug report from this Reflex run.
+
+Run:
+- runId: {{runId}}
+- sourceMode: {{mode}}
+- role: {{role}}
+- repoUrl: {{repoUrl}}
+- commandText: {{commandText}}
+
+Slack context candidates:
+{{slackMessages}}
+
+Media artifacts:
+{{mediaArtifacts}}
+
+Debug capture artifacts:
+{{debugArtifacts}}
+
+Output JSON schema:
+{
+  "whereItHappens": "Product area, page, workflow, or unknown",
+  "actualBehavior": "What the user sees happening",
+  "expectedBehavior": "What should happen instead, or null",
+  "reproductionContext": "Known steps, data shape, browser, customer segment, or null",
+  "affectedSurface": "frontend | backend | mobile | infra | unknown",
+  "evidenceSummary": [
+    {
+      "kind": "slack_message | screenshot | video | screen_recording | audio_recording | transcript | log | other",
+      "sourceId": "Slack ts, Slack file id, or mediaArtifactId",
+      "summary": "Short evidence summary"
+    }
+  ],
+  "missingInfo": ["Short missing detail or question"],
+  "agentPromptPreview": "One compact paragraph preview of what will be sent to diagnosis/agent after confirmation"
+}
+```
+
+Demo fixture output shape:
+
+```json
+{
+  "whereItHappens": "Report export screen",
+  "actualBehavior": "When the user exports a large report, the frontend hangs or crashes.",
+  "expectedBehavior": "The report export should complete or show progress without crashing.",
+  "reproductionContext": "Large customer report export from the reporting page.",
+  "affectedSurface": "frontend",
+  "evidenceSummary": [
+    {
+      "kind": "video",
+      "sourceId": "media_run_export_hang_01_video_1",
+      "summary": "Screen recording shows export clicked, spinner shown, then frontend crash."
+    }
+  ],
+  "missingInfo": [
+    "Exact browser is unknown",
+    "Dataset size is approximate"
+  ],
+  "agentPromptPreview": "Investigate the report export flow. The user reports that exporting a large report from the frontend hangs or crashes. Confirm whether the frontend export handler blocks, crashes, or waits on an unbounded backend response before changing code."
+}
+```
+
+#### Diagnosis Prompt
+
+Used by `POST /api/runs/{runId}/diagnose` after confirmation.
+
+System prompt:
+
+```text
+You are Reflex, a role-aware debugging planner.
+
+Your job is to translate a confirmed bug report and evidence package into an engineering symptom and
+ranked reproduction hypotheses. You must stay grounded in the confirmed report, copied chat history,
+and artifact summaries. Do not write code. Do not claim a root cause is proven until an agent
+reproduces it.
+
+Return only JSON that matches the requested schema.
+```
+
+User prompt template:
+
+```text
+Diagnose this confirmed Reflex intake package.
+
+Run:
+- runId: {{runId}}
+- role: {{role}}
+- repoUrl: {{repoUrl}}
+
+Confirmed report:
+{{confirmedReport}}
+
+Relevant chat history:
+{{chatHistory}}
+
+Evidence artifacts:
+{{mediaArtifacts}}
+
+Debug artifacts:
+{{debugArtifacts}}
+
+Role lens:
+{{roleLensInstruction}}
+
+Output JSON schema:
+{
+  "symptom": "One concise engineering symptom",
+  "roleLens": "How the role changed interpretation",
+  "evidence": [
+    {
+      "sourceId": "message id, mediaArtifactId, or debug artifact id",
+      "summary": "Short evidence summary"
+    }
+  ],
+  "hypotheses": [
+    {
+      "title": "Short hypothesis",
+      "confidence": 0.0,
+      "reproductionPlan": "Concrete sandbox reproduction steps",
+      "expectedFailure": "What should fail before the fix"
+    }
+  ]
+}
+```
+
+Role lens instructions:
+
+```text
+sales_csm: Translate customer-facing language into a reproducible engineering symptom. Preserve customer impact.
+ceo: Broaden the symptom into measurable business/product bottlenecks before narrowing to engineering causes.
+product: Treat the input as a workflow or expected-behavior gap and produce implementation-oriented hypotheses.
+engineer: Preserve technical specificity and skip business translation.
+```
+
+Demo fixture output shape:
+
+```json
+{
+  "symptom": "Report export hangs on large datasets",
+  "roleLens": "Translated sales/CSM customer language into a reproducible frontend/backend export failure.",
+  "evidence": [
+    {
+      "sourceId": "brief_run_export_hang_01",
+      "summary": "Confirmed report says large report export hangs or crashes."
+    },
+    {
+      "sourceId": "media_run_export_hang_01_video_1",
+      "summary": "Video shows export click followed by spinner and crash."
+    }
+  ],
+  "hypotheses": [
+    {
+      "title": "Unbounded report query",
+      "confidence": 0.72,
+      "reproductionPlan": "Seed a large dataset and trigger report export from the reporting page.",
+      "expectedFailure": "Export request exceeds timeout or the frontend spinner never resolves."
+    }
+  ]
+}
+```
+
+#### Replicas Agent Prompt
+
+Used by `POST /api/runs/{runId}/dispatch-replicas` or the scripted fallback after diagnosis.
+
+Prompt template:
+
+```text
+You are a coding agent working in a sandboxed development environment.
+
+Goal:
+Reproduce the confirmed bug, identify the smallest credible fix, verify it, and open a PR.
+
+Hard rules:
+- First reproduce the bug before changing code.
+- Do not broaden scope beyond the selected hypothesis.
+- Prefer a minimal patch over a refactor.
+- Record the failing command/output before the fix and the passing command/output after the fix.
+- Include evidence in the PR body.
+
+Run:
+- runId: {{runId}}
+- intakePackageId: {{intakePackageId}}
+- repoUrl: {{repoUrl}}
+- role: {{role}}
+
+Confirmed bug report:
+{{confirmedReport}}
+
+Engineering symptom:
+{{symptom}}
+
+Selected hypothesis:
+- hypothesisId: {{hypothesisId}}
+- title: {{hypothesisTitle}}
+- reproductionPlan: {{reproductionPlan}}
+- expectedFailure: {{expectedFailure}}
+
+Evidence references:
+{{evidenceReferences}}
+
+Required output:
+1. Reproduction result with command and failing output.
+2. Root cause summary.
+3. Minimal fix.
+4. Verification result with command and passing output.
+5. GitHub PR URL.
+```
+
+Demo fixture prompt values:
+
+```text
+runId: run_export_hang_01
+intakePackageId: pkg_run_export_hang_01
+repoUrl: https://github.com/yxshrk/electron
+role: sales_csm
+symptom: Report export hangs on large datasets
+hypothesisId: hyp_1_unbounded_export_query
+hypothesisTitle: Unbounded report query
+reproductionPlan: Seed a large dataset and trigger report export from the reporting page.
+expectedFailure: Export request times out or spinner never resolves.
+```
+
+#### PR Body Template
+
+Used by Replicas or the scripted fallback when opening the GitHub PR.
+
+```markdown
+## Reflex Fix
+
+Source run: {{runId}}
+Intake package: {{intakePackageId}}
+Role: {{role}}
+Symptom: {{symptom}}
+
+## Confirmed Report
+
+- Where: {{whereItHappens}}
+- Actual: {{actualBehavior}}
+- Expected: {{expectedBehavior}}
+- Surface: {{affectedSurface}}
+
+## Evidence Used
+
+{{evidenceBullets}}
+
+## Reproduction
+
+Before fix:
+`{{failingCommand}}`
+
+Result:
+{{failingOutputSummary}}
+
+## Root Cause
+
+{{rootCause}}
+
+## Fix
+
+{{fixSummary}}
+
+## Verification
+
+After fix:
+`{{passingCommand}}`
+
+Result:
+{{passingOutputSummary}}
+```
+
 ## 9. End-to-End Flow
 
 ### Path A: Bug Mode From Existing Slack Context

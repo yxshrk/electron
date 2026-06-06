@@ -222,7 +222,9 @@ app/api/runs/**             -> Yash, except dispatch-replicas -> Luke
 app/api/replicas/**         -> Luke
 lib/insforge/**             -> Yash
 lib/diagnosis/**            -> Yash
+lib/diagnosis/prompts.ts    -> Yash
 agent/**                    -> Luke
+agent/replicas/prompt.ts    -> Luke
 migrations/**               -> Yash
 developer_plans/**          -> all, but shared-contracts first
 ```
