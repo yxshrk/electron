@@ -4,9 +4,9 @@
 // job here is just to mirror the run status into the thread (Yash PR #8 wiring note).
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { recorderBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../../lib/slack/blocks';
+import { recorderBlocks, blocksForEvent, dispatchPromptBlocks, reportBlocks } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
-import { createRun, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
+import { createRun, subscribe, getDiagnosis, getDraft } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -52,6 +52,7 @@ async function run(channelId: string): Promise<void> {
   // Slack confirm starts diagnose + dispatch. Here we just render status from Yash's /events (SSE). Yash persists our
   // channel/thread, so a deploy could also push these — for now we subscribe in-process.
   let timelineTs: string | undefined;
+  let reportPrompted = false;
   let dispatchPrompted = false;
   const unsub = subscribe(runId, async (ev) => {
     if (!timelineTs) {
@@ -59,6 +60,14 @@ async function run(channelId: string): Promise<void> {
       timelineTs = m.ts;
     } else {
       await updateMessage({ channel: root.channel, ts: timelineTs, text: ev.title, blocks: blocksForEvent(ev) });
+    }
+    // Gate 1: the recorder is capture-only — it drafts the report, then sends the user here to
+    // confirm. Post the same Confirm/Edit card the report flow uses so there's something to click
+    // (the recorder's "confirm in your Slack thread" instruction would otherwise be a dead end).
+    if (ev.status === 'report_drafted' && !reportPrompted) {
+      reportPrompted = true;
+      const draft = await getDraft(runId).catch(() => undefined);
+      if (draft) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Confirm the bug report', blocks: reportBlocks(draft, 'Captured live via the Reflex recorder') });
     }
     if (ev.status === 'diagnosed' && !dispatchPrompted) {
       dispatchPrompted = true;
