@@ -9,10 +9,10 @@ commands, route names, state names, payloads, schema ownership, env vars, and bu
 ## Product Spine
 
 ```text
-Path A: /reflex-bug-mode
+Path A: /reflex-report
   -> fetch latest 100 Slack message candidates + nearby attachments
 
-Path B: /reflex-debug-mode
+Path B: /reflex-record
   -> browser recorder
   -> screen/audio recording + screenshots + notes
 

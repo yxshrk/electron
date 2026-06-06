@@ -2,13 +2,13 @@
 
 ## 1. Project Summary
 
-Reflex is a role-aware debugging assistant for agentic software development. A user starts from either Slack bug mode or live debug mode, optionally attaches screen context, and Reflex converts the captured context into a structured engineering symptom. Reflex then dispatches coding agents to reproduce the issue in sandboxed environments and opens a pull request with evidence that the bug was reproduced and fixed.
+Reflex is a role-aware debugging assistant for agentic software development. A user starts from either a Slack report path or a live recording path, optionally attaches screen context, and Reflex converts the captured context into a structured engineering symptom. Reflex then dispatches coding agents to reproduce the issue in sandboxed environments and opens a pull request with evidence that the bug was reproduced and fixed.
 
 The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on June 6, 2026. The event is focused on agentic developer tools, coding agents, autonomous workflows, agent infrastructure, and AI-native engineering systems. The fastest demo implementation is Slack-first: Slack owns the primary user experience, a small webhook/API layer owns orchestration, and InsForge owns the Postgres database, storage, realtime-capable state, and backend project context.
 
 One-line judge pitch:
 
-> Use `/reflex-bug-mode` when the bug already exists in Slack, or `/reflex-debug-mode` when someone needs to record a live reproduction. Both paths produce the same confirmed intake package, then Reflex dispatches a coding agent and returns a PR with reproduction evidence.
+> Use `/reflex-report` when the bug already exists in Slack, or `/reflex-record` when someone needs to record a live reproduction. Both paths produce the same confirmed intake package, then Reflex dispatches a coding agent and returns a PR with reproduction evidence.
 
 ## 2. Problem Statement
 
@@ -24,7 +24,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 ## 3. Goals
 
 - Start a bug run from one Slack command.
-- Support two entry points: Slack bug mode for existing customer reports and debug mode for live reproduction capture.
+- Support two entry points: `/reflex-report` for existing customer reports and `/reflex-record` for live reproduction capture.
 - Capture the triggering Slack context, optional message text, recordings, screenshots, transcripts, and attachments.
 - Convert vague user language into a structured technical symptom.
 - Generate a ranked hypothesis tree tied to codebase context.
@@ -71,14 +71,14 @@ Do not add MySQL or Supabase for the MVP. InsForge Postgres is the database, and
 Minimum demo loop:
 
 ```text
-Entry point A: Slack /reflex-bug-mode command
+Entry point A: Slack /reflex-report command
 or
-Entry point B: Slack /reflex-debug-mode command -> browser capture page -> Done
--> /api/slack/reflex-bug-mode or /api/slack/reflex-debug-mode
+Entry point B: Slack /reflex-record command -> browser capture page -> Done
+-> /api/slack/reflex-report or /api/slack/reflex-record
 -> InsForge stores run state
 -> Reflex fetches nearby Slack chat history and attachment metadata when Slack context exists
 -> InsForge stores chat context and attachment records
--> Reflex stores debug recording, transcript, screenshots, and uploaded artifacts when debug mode is used
+-> Reflex stores debug recording, transcript, screenshots, and uploaded artifacts when the record path is used
 -> /api/runs/{runId}/draft-bug-brief creates a compact bug report
 -> user confirms, edits, or adds more attachments in Slack
 -> InsForge stores the confirmed intake package
@@ -93,8 +93,8 @@ Entry point B: Slack /reflex-debug-mode command -> browser capture page -> Done
 MVP command defaults:
 
 ```text
-Bug command: /reflex-bug-mode
-Debug command: /reflex-debug-mode
+Report command: /reflex-report
+Record command: /reflex-record
 Default role: sales_csm
 Default repo: https://github.com/yxshrk/electron
 Default Slack context fetch cap: latest 100 messages in the current Slack channel before the command
@@ -105,13 +105,13 @@ Default prompt context: relevant summary and strongest evidence only, about 6000
 The user should not need to type `role`, `repo`, or a long bug description during the demo. Optional command text can be included, but the happy path is just:
 
 ```text
-/reflex-bug-mode
+/reflex-report
 ```
 
-Debug mode has a separate happy path:
+Record path has a separate happy path:
 
 ```text
-/reflex-debug-mode
+/reflex-record
 -> open recorder
 -> record screen and audio while reproducing the issue
 -> Done
@@ -122,7 +122,7 @@ Do not use an adaptive "ask the LLM if more history is needed, then fetch +10" l
 Slack implementation note:
 
 ```text
-Custom Slack slash commands are channel-level app entry points, not thread entry points. For the MVP, run `/reflex-bug-mode` in the channel right after the customer report. Reflex then creates its own Slack update thread from the bot response. `/reflex-debug-mode` can also start from Slack, but recording itself happens in a browser capture page because Slack cannot directly grant screen or microphone capture to the app. If the team wants true thread/message-level start later, add Slack message shortcuts named "Start Reflex Bug Mode" and "Start Reflex Debug Mode" that map into the same `/api/runs` payload.
+Custom Slack slash commands are channel-level app entry points, not thread entry points. For the MVP, run `/reflex-report` in the channel right after the customer report. Reflex then creates its own Slack update thread from the bot response. `/reflex-record` can also start from Slack, but recording itself happens in a browser capture page because Slack cannot directly grant screen or microphone capture to the app. If the team wants true thread/message-level start later, add Slack message shortcuts named "Start Reflex Report" and "Start Reflex Recording" that map into the same `/api/runs` payload.
 ```
 
 ### Hackathon Sponsor Usage
@@ -174,8 +174,8 @@ Example:
 
 ```mermaid
 flowchart LR
-    Slack["Slack /reflex-bug-mode"] --> SlackAPI["/api/slack/reflex-bug-mode"]
-    DebugSlack["Slack /reflex-debug-mode"] --> DebugAPI["/api/slack/reflex-debug-mode"]
+    Slack["Slack /reflex-report"] --> SlackAPI["/api/slack/reflex-report"]
+    DebugSlack["Slack /reflex-record"] --> DebugAPI["/api/slack/reflex-record"]
     DebugAPI --> Capture["Browser recorder /debug/{runId}"]
     Capture --> DebugUpload["POST /api/runs/{runId}/debug-capture"]
     DebugUpload --> Storage
@@ -218,12 +218,12 @@ Purpose: Provide the primary product surface for the MVP.
 
 Responsibilities:
 
-- Receive `/reflex-bug-mode` slash commands.
-- Receive `/reflex-debug-mode` slash commands as a separate entry point.
+- Receive `/reflex-report` slash commands.
+- Receive `/reflex-record` slash commands as a separate entry point.
 - Default the MVP role to `sales_csm` and repo to `https://github.com/yxshrk/electron`.
 - Treat optional command text as a hint, not as a required form.
-- For bug mode, read the latest 100 channel messages before the command and latest 3 nearby attachments as raw context candidates.
-- For debug mode, create a run and return an "Open Recorder" link to the browser capture page.
+- For `/reflex-report`, read the latest 100 channel messages before the command and latest 3 nearby attachments as raw context candidates.
+- For `/reflex-record`, create a run and return an "Open Recorder" link to the browser capture page.
 - Copy fetched chat history and attachment metadata into InsForge before drafting.
 - Accept screenshots or recordings as Slack attachments when available.
 - Ask the user to confirm, edit, or add attachments to a compact bug report before diagnosis starts.
@@ -242,15 +242,15 @@ Purpose: Let a user reproduce a bug live when the useful evidence is not already
 
 Responsibilities:
 
-- Start from `/reflex-debug-mode`.
+- Start from `/reflex-record`.
 - Open a browser capture page for screen recording, microphone recording, screenshots, and typed notes.
 - Store recordings, transcripts, screenshots, and notes in InsForge Storage and Postgres when the user clicks Done.
-- Generate the same bug report confirmation message used by bug mode.
+- Generate the same bug report confirmation message used by the report path.
 - Continue into the same confirmed intake package, diagnosis, Replicas dispatch, and PR flow.
 
 Hackathon discipline:
 
-- Debug mode is a sibling entry point, not a replacement for `/reflex-bug-mode`.
+- `/reflex-record` is a sibling entry point, not a replacement for `/reflex-report`.
 - Keep the capture UI minimal: Start Recording, Stop, Done, and optional Add Attachment.
 - If recording is too risky for the demo, use a pre-recorded video upload and still route it through the same `debug` mode package.
 
@@ -289,7 +289,7 @@ Hackathon discipline:
 - If the user confirms, continue automatically.
 - If the user edits, update the report and continue from the confirmed version.
 - If the user adds attachments, store them in InsForge Storage, append them to the evidence list, and re-render the same confirmation message.
-- The confirmation message should say exactly what context was used, for example: "I used the `/reflex-bug-mode` command, 8 channel messages, and 2 attached files."
+- The confirmation message should say exactly what context was used, for example: "I used the `/reflex-report` command, 8 channel messages, and 2 attached files."
 
 #### Intake Package
 
@@ -325,7 +325,7 @@ Purpose: Normalize Slack input and orchestrate the Reflex pipeline.
 
 Responsibilities:
 
-- Serve `/api/slack/reflex-bug-mode`, `/api/slack/reflex-debug-mode`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}`, `/api/runs/{runId}/context`, `/api/runs/{runId}/debug-capture`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/intake-package`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, `/api/runs/{runId}/events`, and `/api/replicas/callback`.
+- Serve `/api/slack/reflex-report`, `/api/slack/reflex-record`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}`, `/api/runs/{runId}/context`, `/api/runs/{runId}/debug-capture`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/intake-package`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, `/api/runs/{runId}/events`, and `/api/replicas/callback`.
 - Call InsForge SDK or REST APIs for database and storage state.
 - Call the model path for diagnosis.
 - Dispatch Replicas or the scripted fallback.
@@ -517,7 +517,7 @@ Memory graph concept:
 | `mode` | Text | `bug` for Slack context intake or `debug` for live reproduction capture |
 | `role` | Text | Defaulted or user-selected role, `sales_csm` for the happy path |
 | `repo_url` | Text | Target repository |
-| `command_text` | Text | Optional text passed to `/reflex-bug-mode` or `/reflex-debug-mode` |
+| `command_text` | Text | Optional text passed to `/reflex-report` or `/reflex-record` |
 | `slack_channel_id` | Text | Slack channel where the run started |
 | `slack_thread_ts` | Text | Slack update thread timestamp, or source thread timestamp when using the optional message shortcut |
 | `context_window` | JSON | Limits used for Slack message candidates, attachments, debug artifacts, and prompt chars |
@@ -850,20 +850,20 @@ reproduction_failed
 pr_failed
 ```
 
-### `POST /api/slack/reflex-bug-mode`
+### `POST /api/slack/reflex-report`
 
-Primary MVP intake. Receives the `/reflex-bug-mode` Slack slash command, creates a run, acknowledges Slack quickly, and continues the pipeline asynchronously.
+Primary MVP intake. Receives the `/reflex-report` Slack slash command, creates a run, acknowledges Slack quickly, and continues the pipeline asynchronously.
 
 Example command:
 
 ```text
-/reflex-bug-mode
+/reflex-report
 ```
 
 Optional command text is allowed when the user wants to override the nearby Slack context:
 
 ```text
-/reflex-bug-mode export hangs when customer downloads a large report
+/reflex-report export hangs when customer downloads a large report
 ```
 
 Response:
@@ -876,14 +876,14 @@ Response:
 }
 ```
 
-### `POST /api/slack/reflex-debug-mode`
+### `POST /api/slack/reflex-record`
 
-Second MVP entry point. Receives the `/reflex-debug-mode` Slack slash command, creates a debug-mode run, and returns a link to the browser recorder. This path is for a user actively reproducing a bug instead of reporting an issue that already exists in Slack history.
+Second MVP entry point. Receives the `/reflex-record` Slack slash command, creates a recording run, and returns a link to the browser recorder. This path is for a user actively reproducing a bug instead of reporting an issue that already exists in Slack history.
 
 Example command:
 
 ```text
-/reflex-debug-mode
+/reflex-record
 ```
 
 Response:
@@ -892,7 +892,7 @@ Response:
 {
   "runId": "run_export_hang_01",
   "status": "created",
-  "message": "Debug mode started. Open the recorder, reproduce the issue, then click Done.",
+  "message": "Recording started. Open the recorder, reproduce the issue, then click Done.",
   "recordingUrl": "https://reflex.example.com/debug/run_export_hang_01"
 }
 ```
@@ -1059,7 +1059,7 @@ Response:
 
 ### `POST /api/runs/{runId}/debug-capture`
 
-Stores live debug-mode artifacts after the user clicks Done in the recorder. These artifacts enter the same evidence list as Slack attachments and are included in the confirmed intake package.
+Stores live recording artifacts after the user clicks Done in the recorder. These artifacts enter the same evidence list as Slack attachments and are included in the confirmed intake package.
 
 Request:
 
@@ -1137,7 +1137,7 @@ Slack confirmation message:
 ```text
 Reflex understood the bug this way:
 
-Context used: /reflex-bug-mode command, 8 channel messages, 2 attached files.
+Context used: /reflex-report command, 8 channel messages, 2 attached files.
 
 Where: Report export screen
 Actual: Exporting a large report hangs or crashes the frontend.
@@ -1666,18 +1666,18 @@ Result:
 
 ## 9. End-to-End Flow
 
-### Path A: Bug Mode From Existing Slack Context
+### Path A: Report Existing Slack Context
 
-1. CSM runs `/reflex-bug-mode` in the Slack channel right after the customer issue appears.
+1. CSM runs `/reflex-report` in the Slack channel right after the customer issue appears.
 2. Reflex immediately creates a `bug` run with default role `sales_csm` and default repo `https://github.com/yxshrk/electron`.
-3. Slack sends the command to `/api/slack/reflex-bug-mode`.
+3. Slack sends the command to `/api/slack/reflex-report`.
 4. The API normalizes the command into `POST /api/runs`.
 5. Reflex fetches the latest 100 channel messages and latest 3 nearby attachments, then stores them through `POST /api/runs/{runId}/context`.
 6. Slack file attachments are copied to InsForge Storage and registered through `POST /api/runs/{runId}/media`.
 
-### Path B: Debug Mode From Live Reproduction
+### Path B: Record Live Reproduction
 
-1. User runs `/reflex-debug-mode` when they need to reproduce the issue live.
+1. User runs `/reflex-record` when they need to reproduce the issue live.
 2. Reflex creates a `debug` run and returns an Open Recorder link.
 3. User records screen and audio, optionally adds notes or screenshots, then clicks Done.
 4. The recorder uploads artifacts through `POST /api/runs/{runId}/debug-capture`.
@@ -1701,12 +1701,12 @@ Result:
 The simplest user-facing flow is:
 
 ```text
-/reflex-bug-mode
+/reflex-report
 -> Confirm or edit generated bug report
 -> Backend receives report + chat history + attachments
 -> Watch Replicas produce a PR
 
-/reflex-debug-mode
+/reflex-record
 -> Record reproduction and click Done
 -> Confirm or edit generated bug report
 -> Backend receives report + recording + transcript + screenshots
@@ -1753,13 +1753,13 @@ Recommended product-role feature:
 
 ### Phase 1: Create Slack Intake
 
-- Create a Slack app with `/reflex-bug-mode` and `/reflex-debug-mode` slash commands.
-- Implement `/api/slack/reflex-bug-mode`.
-- Implement `/api/slack/reflex-debug-mode`.
+- Create a Slack app with `/reflex-report` and `/reflex-record` slash commands.
+- Implement `/api/slack/reflex-report`.
+- Implement `/api/slack/reflex-record`.
 - Default `role` to `sales_csm` and `repo` to `https://github.com/yxshrk/electron`.
 - Treat command text as optional.
-- For bug mode, read the latest 100 channel messages and latest 3 attachments.
-- For debug mode, return a recorder link and create a `debug` run.
+- For `/reflex-report`, read the latest 100 channel messages and latest 3 attachments.
+- For `/reflex-record`, return a recorder link and create a `debug` run.
 - Reply immediately with a run ID and "started" status.
 - Normalize the command into the internal `POST /api/runs` payload.
 - Store fetched chat context and attachment metadata in InsForge.
@@ -1831,7 +1831,7 @@ Success criterion:
 
 ### Phase 6: Add Polish Only After the Spine Works
 
-- Add the `/reflex-debug-mode` browser capture page with `getDisplayMedia` and microphone capture if the Slack bug-mode spine already works.
+- Add the `/reflex-record` browser capture page with `getDisplayMedia` and microphone capture if the Slack report spine already works.
 - Add richer screenshot/video upload handling to InsForge Storage.
 - Add speech-to-text or a transcript input fallback for the optional web surface.
 - Add InsForge Realtime status updates.
@@ -1850,15 +1850,15 @@ P0 required:
 
 - Seeded bug in `https://github.com/yxshrk/electron`: export-hang bug, seeded large dataset, failing repro command or test, known minimal fix, verification command, scripted fallback PR path.
 - InsForge setup: migration applied, `reflex-evidence` storage bucket created, `INSFORGE_PROJECT_URL` and `INSFORGE_SERVICE_KEY` configured.
-- Slack app: `/reflex-bug-mode`, `/reflex-debug-mode`, Confirm/Edit/Add Attachment interactions, bot token, signing secret, latest 100 message fetch, latest 3 attachment fetch.
+- Slack app: `/reflex-report`, `/reflex-record`, Confirm/Edit/Add Attachment interactions, bot token, signing secret, latest 100 message fetch, latest 3 attachment fetch.
 - Core API routes: `POST /api/runs`, context/media/debug capture ingest, draft bug brief, confirm bug brief, intake package, diagnose, dispatch Replicas or scripted fallback, Replicas callback.
 - Prompt templates in code: bug report draft prompt, diagnosis prompt, Replicas agent prompt, PR body template.
 - Dashboard: `/dashboard`, `/dashboard/{runId}`, `GET /api/runs`, `GET /api/runs/{runId}`, run timeline from `run_events`, chat history, attachments, diagnosis, hypotheses, agent evidence, PR link.
-- Rehearsal: run `/reflex-bug-mode` to PR at least three times with the seeded export-hang bug.
+- Rehearsal: run `/reflex-report` to PR at least three times with the seeded export-hang bug.
 
 P1 optional:
 
-- Live `/reflex-debug-mode` recorder with screen and microphone capture.
+- Live `/reflex-record` recorder with screen and microphone capture.
 - Real Replicas dispatch after the scripted fallback works.
 - Vercel deployment for webhook/API/dashboard.
 - Polished dashboard UI.
@@ -1871,7 +1871,7 @@ Fastest implementation order:
 seeded bug + scripted fallback PR
 -> InsForge schema/storage
 -> /api/runs + run_events
--> /reflex-bug-mode
+-> /reflex-report
 -> draft/confirm report
 -> deterministic diagnosis fixture
 -> scripted fallback opens PR
@@ -1902,7 +1902,7 @@ The team should split by interface boundaries, not by page sections. Each person
 
 | Owner | Primary Scope | Must Deliver | Depends On |
 | --- | --- | --- | --- |
-| Laurence | Slack front door | `/reflex-bug-mode`, `/reflex-debug-mode`, Slack context fetch, confirmation card, Slack thread status updates | Yash's run APIs and shared contracts |
+| Laurence | Slack front door | `/reflex-report`, `/reflex-record`, Slack context fetch, confirmation card, Slack thread status updates | Yash's run APIs and shared contracts |
 | Yash | InsForge backend, debug capture storage, report draft, diagnosis, dashboard read model | `reflex_runs` and `run_events` schema, context/media/debug ingest, bug report draft, confirmed intake package, diagnosis, run status source of truth, `/dashboard` data | InsForge credentials and Slack payloads from Laurence |
 | Luke | Seeded bug, Replicas dispatch, reproduction, fix, and PR | Deterministic export-hang fixture, scripted fallback PR, Replicas dispatch route, evidence payload, GitHub PR output | Confirmed intake package and hypothesis from Yash |
 
@@ -2034,7 +2034,7 @@ Slack should never infer progress locally. Each thread update should come from t
 ### 12.4 Build Order for Three People
 
 1. Yash creates the InsForge schema, typed contracts, and `POST /api/runs`.
-2. Laurence creates the Slack app, `/reflex-bug-mode`, `/reflex-debug-mode`, and Slack interactions against mocked run APIs.
+2. Laurence creates the Slack app, `/reflex-report`, `/reflex-record`, and Slack interactions against mocked run APIs.
 3. Yash adds Slack context ingest, media ingest, debug capture ingest, and `POST /api/runs/{runId}/draft-bug-brief`.
 4. Laurence wires the confirmation card: Confirm, Edit Report, and Add Attachment.
 5. Yash adds `POST /api/runs/{runId}/confirm-bug-brief`, `POST /api/runs/{runId}/intake-package`, and `POST /api/runs/{runId}/diagnose`.
@@ -2043,14 +2043,14 @@ Slack should never infer progress locally. Each thread update should come from t
 8. Yash appends `run_events` on each state transition and exposes `GET /api/runs`, `GET /api/runs/{runId}`, and `GET /api/runs/{runId}/events`.
 9. Laurence wires Slack thread updates to `reflex_runs.status` and `run_events` through the run event stream or polling.
 10. Yash adds the tiny read-only `/dashboard` and `/dashboard/{runId}` views.
-11. Everyone rehearses `/reflex-bug-mode` first, then adds `/reflex-debug-mode` only if the core spine is reliable.
+11. Everyone rehearses `/reflex-report` first, then adds `/reflex-record` only if the core spine is reliable.
 
 ### 12.5 Demo Ownership
 
 | Demo Moment | Owner | Fallback |
 | --- | --- | --- |
-| Slack bug-mode command and attachment | Laurence | Use a static Slack message and screenshot URL |
-| Slack debug-mode command and recorder link | Laurence / Yash | Use a pre-recorded video uploaded as a media artifact |
+| Slack report command and attachment | Laurence | Use a static Slack message and screenshot URL |
+| Slack record command and recorder link | Laurence / Yash | Use a pre-recorded video uploaded as a media artifact |
 | Run creation and persistence | Yash | Use seeded run row in InsForge |
 | Bug report confirmation | Laurence / Yash | Use a prefilled report and click Confirm |
 | Confirmed intake package | Yash | Use seeded chat history and attachment records in InsForge |
@@ -2074,9 +2074,9 @@ Slack should never infer progress locally. Each thread update should come from t
 
 ### 12.7 Definition of Done
 
-The MVP is done when the team can start from `/reflex-bug-mode` and reach a real or pre-authorized PR link with these artifacts persisted in InsForge. `/reflex-debug-mode` is done when the same backend flow works from a recording upload:
+The MVP is done when the team can start from `/reflex-report` and reach a real or pre-authorized PR link with these artifacts persisted in InsForge. `/reflex-record` is done when the same backend flow works from a recording upload:
 
-- Original Slack bug-mode report with default role `sales_csm`.
+- Original Slack report with default role `sales_csm`.
 - Screenshot, Slack attachment, or debug recording reference.
 - Confirmed intake package with bug report, chat history, debug artifacts, and attachments.
 - Structured symptom.
@@ -2095,7 +2095,7 @@ Build:
 - InsForge-backed run persistence.
 - `run_events` timeline persistence.
 - Bug report drafting and Slack confirmation.
-- Debug-mode recording upload when time allows.
+- Recording upload when time allows.
 - Structured symptom to hypothesis tree for the rehearsed report.
 - One deterministic reproduction path against a seeded repo.
 - Minimal code fix or seeded patch.
@@ -2119,7 +2119,7 @@ Name:
 - Full diagnostic memory improvement loop.
 - Complete Vercel frontend dashboard.
 - Mobile reproduction path through Limrun.
-- Deep Slack workflow automation beyond the `/reflex-bug-mode` and `/reflex-debug-mode` commands.
+- Deep Slack workflow automation beyond the `/reflex-report` and `/reflex-record` commands.
 
 ## 14. Verification Strategy
 
@@ -2145,7 +2145,7 @@ Name:
 
 The demo is ready when the team can run this script three times in a row:
 
-1. Start from the Slack `/reflex-bug-mode` command.
+1. Start from the Slack `/reflex-report` command.
 2. Use the nearby Slack context and optional screenshot/video evidence.
 3. Confirm or edit the drafted bug report in Slack.
 4. Watch diagnosis and hypothesis updates appear in the Slack bot update thread.
@@ -2154,9 +2154,9 @@ The demo is ready when the team can run this script three times in a row:
 7. Open the PR and show the evidence.
 8. Open `/dashboard/{runId}` and show the stored context, timeline, diagnosis, evidence, and PR.
 
-Debug mode is ready when the team can also run:
+Record path is ready when the team can also run:
 
-1. Start from `/reflex-debug-mode`.
+1. Start from `/reflex-record`.
 2. Record or upload a reproduction video.
 3. Click Done.
 4. Confirm the generated bug report.
@@ -2185,7 +2185,7 @@ Production requirements would include screenshot/video redaction, data retention
 | Slack command parsing is brittle | Intake fails during demo | Require no command arguments in the happy path; default role, repo, context, and media limits |
 | Clarification prompt is too verbose | User ignores confirmation or agent prompt bloats | Keep the bug report to five fields plus one compact agent prompt preview |
 | Multimodal extraction is unreliable | Diagnosis may drift | Use Slack text as the source of truth and attachments as supporting evidence |
-| Browser capture permissions fail | Debug mode cannot record live | Upload a pre-recorded video through the same `debug_capture` artifact path |
+| Browser capture permissions fail | `/reflex-record` cannot record live | Upload a pre-recorded video through the same `debug_capture` artifact path |
 | Sandbox startup is slow | Demo stalls | Pre-warm or show precomputed run if network fails |
 | Agent fixes wrong code | Demo loses credibility | Use seeded bugs with deterministic tests |
 | InsForge project is not linked before demo | Backend calls fail | Run `npx @insforge/cli current` during setup and keep a fallback project ready |
@@ -2197,7 +2197,7 @@ Production requirements would include screenshot/video redaction, data retention
 - What is the fastest reliable way to pass a confirmed fix task into Devin during the hackathon?
 - Which model path should generate diagnosis JSON while preserving sponsor alignment?
 - Which InsForge project should be linked for the demo, and what service credentials should the webhook/API layer use?
-- Which Slack workspace and bot credentials should receive the `/reflex-bug-mode` and `/reflex-debug-mode` commands?
+- Which Slack workspace and bot credentials should receive the `/reflex-report` and `/reflex-record` commands?
 - Do we want a mobile stretch demo, or should Limrun remain a roadmap extension only?
 - Where is the tiny dashboard deployed: Vercel with the webhook/API, or local-only for the hackathon demo?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
@@ -2210,7 +2210,7 @@ Opening:
 
 Demo:
 
-1. Run `/reflex-bug-mode` in the Slack channel right after the customer report.
+1. Run `/reflex-report` in the Slack channel right after the customer report.
 2. Attach or reference a screenshot/recording of the stuck export screen if available.
 3. Show the Reflex bot reply: run started.
 4. Show the drafted bug report:
@@ -2227,16 +2227,16 @@ Demo:
 11. Open the PR linked in the Reflex bot update thread.
 12. Open `/dashboard/{runId}` and show the stored chat history, attachments, timeline, diagnosis, agent evidence, and PR metadata.
 
-Optional debug-mode beat:
+Optional record-path beat:
 
-1. Run `/reflex-debug-mode`.
+1. Run `/reflex-record`.
 2. Open the recorder, reproduce the export hang, and click Done.
 3. Show that Reflex generates the same style of confirmable bug report from the recording, transcript, screenshots, and notes.
 4. Confirm the report and continue into the same package -> diagnosis -> Replicas -> PR flow.
 
 Closer:
 
-As an optional role-aware variant, run `/reflex-bug-mode role:ceo Reporting feels slow.` Reflex should produce a broader diagnosis with performance and workflow hypotheses instead of a narrow customer bug report. This proves the role can still change the engineering lens without making the default demo harder.
+As an optional role-aware variant, run `/reflex-report role:ceo Reporting feels slow.` Reflex should produce a broader diagnosis with performance and workflow hypotheses instead of a narrow customer bug report. This proves the role can still change the engineering lens without making the default demo harder.
 
 ## 19. Success Criteria
 

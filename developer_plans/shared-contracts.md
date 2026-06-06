@@ -11,8 +11,8 @@ This is the anti-collision spec for the three workstreams. It is aligned with
 | Run timeline | `run_events` | UI-only status history |
 | User-facing summary | `bug report` | long ticket form |
 | Confirmed backend bundle | `intakePackageId`, `intake_packages` | raw prompt-only context |
-| Slack bug entry | `/reflex-bug-mode` | `/reflex role:sales repo:...` |
-| Live reproduction entry | `/reflex-debug-mode` | replacing bug mode |
+| Existing-report entry | `/reflex-report` | `/reflex role:sales repo:...` |
+| Live reproduction entry | `/reflex-record` | replacing the report path |
 
 Both entry points must converge into one confirmed intake package before diagnosis, dispatch, or PR
 work starts.
@@ -40,7 +40,7 @@ complete timeline instead of only the latest state.
 
 ## 3. Commands
 
-### `/reflex-bug-mode`
+### `/reflex-report`
 
 Use when the bug already exists in Slack context.
 
@@ -52,7 +52,7 @@ Behavior:
 - Store copied Slack context through `POST /api/runs/{runId}/context`.
 - Draft a report and ask the user to confirm, edit, or add attachments.
 
-### `/reflex-debug-mode`
+### `/reflex-record`
 
 Use when a user is actively reproducing the issue.
 
@@ -193,8 +193,8 @@ interface RunEvent {
 
 | Route | Owner | Purpose |
 | --- | --- | --- |
-| `POST /api/slack/reflex-bug-mode` | Laurence | Slack bug-mode command |
-| `POST /api/slack/reflex-debug-mode` | Laurence | Slack debug-mode command and recorder link |
+| `POST /api/slack/reflex-report` | Laurence | Slack report command |
+| `POST /api/slack/reflex-record` | Laurence | Slack record command and recorder link |
 | `POST /api/slack/events` | Laurence | Slack file/message events |
 | `POST /api/slack/interactions` | Laurence | Confirm/Edit/Add Attachment actions |
 | `POST /api/runs` | Yash | Create `reflex_runs` row |
@@ -255,10 +255,10 @@ REPLICAS_WEBHOOK_SECRET=
 ## 9. Build Order
 
 1. Yash creates the InsForge schema, typed client, `run_events`, and `POST /api/runs`.
-2. Laurence creates `/reflex-bug-mode`, `/reflex-debug-mode`, and Slack interactions against mocked run APIs.
+2. Laurence creates `/reflex-report`, `/reflex-record`, and Slack interactions against mocked run APIs.
 3. Yash implements context ingest, debug capture ingest, media storage, report draft, and intake package creation.
 4. Yash implements diagnosis from confirmed intake packages.
 5. Luke implements scripted fallback PR, then Replicas dispatch.
 6. Yash implements `GET /api/runs`, `GET /api/runs/{runId}`, `GET /api/runs/{runId}/events`, `/dashboard`, and `/dashboard/{runId}`.
 7. Laurence wires Slack status updates to the run event stream.
-8. Everyone rehearses bug mode first; debug mode is a polish path if time allows.
+8. Everyone rehearses `/reflex-report` first; `/reflex-record` is a polish path if time allows.
