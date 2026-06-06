@@ -1,4 +1,4 @@
-import type { ReportRow } from '../demo/report-fixture';
+import type { ReportRow } from './report-fixture';
 
 export interface ReportExportOptions {
   batchSize?: number;
@@ -19,7 +19,9 @@ const DEFAULT_MAX_SYNCHRONOUS_ROWS = 1000;
  */
 export function exportReportCsv(records: ReportRow[], options: ReportExportOptions = {}): string {
   // Intentional seeded demo bug: the default path uses the unbounded synchronous exporter.
-  return exportReportCsvBatched(records, options);
+  // (Re-seeded after PR #20 — a merged Reflex auto-fix — swapped this to batched; the fixture must
+  // stay buggy so the demo can reproduce + fix it. Don't merge the demo's fix PRs into this file.)
+  return exportReportCsvUnbounded(records, options);
 }
 
 /**

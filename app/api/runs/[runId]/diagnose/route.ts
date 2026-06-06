@@ -60,7 +60,11 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
   const anchors = obs[0]?.visible_state?.anchors?.length
     ? obs[0].visible_state.anchors
     : result.symptom.split(/\s+/);
-  const grounded = await grepRepo(run.repo_url, anchors);
+  // Scope the grep to the buggy app we link in the dashboard (the only thing a recording can hit),
+  // so grounding points at the same subtree the fix patches. Set REFLEX_GROUNDING_PATH_PREFIX=""
+  // to ground against the whole repo (production, where the target is a real customer codebase).
+  const pathPrefix = process.env.REFLEX_GROUNDING_PATH_PREFIX ?? "app/test-fixtures";
+  const grounded = await grepRepo(run.repo_url, anchors, { pathPrefix });
   const hint = grepHint(grounded);
   const groundingEvidence = grounded.map((g) => `code: ${g.filePath}:${g.line} (${g.anchor})`);
 

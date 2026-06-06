@@ -11,7 +11,7 @@ export interface ScriptedFallbackOptions {
   remote?: string;
 }
 
-const EXPORT_FILE = 'lib/reports/export.ts';
+const EXPORT_FILE = 'app/test-fixtures/reports/export.ts';
 const FAILING_COMMAND = 'npm run test:export-large:repro';
 const PASSING_COMMAND = 'npm run test:export-large:fixed';
 const BROKEN_DEFAULT_CALL = 'return exportReportCsvUnbounded(records, options);';
@@ -86,7 +86,7 @@ export function buildFallbackBranchName(input: DispatchInput): string {
  *
  * @param repoRoot Repository root that contains the export implementation.
  * @returns Nothing.
- * @sideEffects Rewrites `lib/reports/export.ts` inside the target repository.
+ * @sideEffects Rewrites `app/test-fixtures/reports/export.ts` inside the target repository.
  */
 export function applyKnownExportFix(repoRoot: string): void {
   const exportPath = join(repoRoot, EXPORT_FILE);
