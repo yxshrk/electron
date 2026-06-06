@@ -75,6 +75,32 @@ Ninety seconds, complaint to merged fix. **The kicker:** re-tag the same screen 
 
 **Hard cut line if wifi dies:** reveal a pre-computed run instead of live execution. Never bet the demo on live sandbox spin-up over conference wifi.
 
+## Current MVP readiness checklist
+
+The detailed implementation plan lives in [TECHNICAL_DOCUMENT.md](./TECHNICAL_DOCUMENT.md). The
+short version:
+
+P0 required for the demo:
+
+- Seeded export-hang bug with a failing repro command, large dataset fixture, known minimal fix,
+  verification command, and scripted fallback PR path.
+- InsForge Postgres schema, `run_events`, and `reflex-evidence` storage bucket.
+- Slack `/reflex-bug-mode` with latest 100 message fetch, latest 3 attachment fetch, and
+  Confirm/Edit/Add Attachment actions.
+- Core run APIs for context/media ingest, bug report draft, confirmation, intake package, diagnosis,
+  dispatch, and callback.
+- Prompt templates for bug report draft, diagnosis, Replicas dispatch, and PR body.
+- Tiny read-only dashboard: `/dashboard` and `/dashboard/{runId}`.
+
+P1 after the spine works:
+
+- Live `/reflex-debug-mode` recorder.
+- Real Replicas dispatch.
+- Vercel deployment.
+- Dashboard polish.
+- Realtime/SSE updates.
+- Parallel hypothesis fan-out.
+
 ## What to verify before writing the execution doc
 
 - Replicas' exact dispatch surface and SDK for spinning up agents programmatically (vs. only from Slack/Linear/GitHub).
