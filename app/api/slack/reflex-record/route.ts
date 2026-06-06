@@ -8,8 +8,10 @@ import { recorderBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../.
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { createRun, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
+import { background } from '../../../../lib/slack/after';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300; // keep the status poll alive on Vercel (Fluid Compute)
 
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
@@ -25,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
   const form = new URLSearchParams(rawBody);
   const channelId = form.get('channel_id') ?? '';
 
-  void run(channelId);
+  background(run(channelId));
 
   return Response.json({ response_type: 'ephemeral', text: '🎥 Reflex (record) — opening a recorder for you…' });
 }

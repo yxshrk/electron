@@ -7,8 +7,10 @@ import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { gatherContext } from '../../../../lib/slack/context';
 import { createRun, postContext, draftBugBrief, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
+import { background } from '../../../../lib/slack/after';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300; // keep the status poll alive on Vercel (Fluid Compute)
 
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
@@ -25,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
   const channelId = form.get('channel_id') ?? '';
   const commandText = form.get('text') ?? '';
 
-  void run(channelId, commandText);
+  background(run(channelId, commandText));
 
   return Response.json({ response_type: 'ephemeral', text: '🟡 Reflex (report) is gathering context…' });
 }
