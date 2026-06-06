@@ -15,6 +15,10 @@ const DEFAULT_DRAFT_CONFIG: DraftConfig = {
 const useMock = (process.env.REFLEX_BACKEND ?? 'mock') === 'mock';
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 const TERMINAL_STATUSES = new Set(['shipped', 'diagnosis_failed', 'dispatch_failed', 'reproduction_failed', 'pr_failed']);
+// Event-poll window. Must outlast a full recorder session (open app, reproduce, narrate) plus the
+// back-half pipeline, or the record flow's report_drafted/Confirm card is missed. 400 × 1.5s = 10 min.
+const POLL_INTERVAL_MS = 1500;
+const MAX_POLLS = 400;
 
 interface RunDetailResponse {
   events?: Array<{
@@ -210,7 +214,7 @@ async function pollRunEvents(
   onEvent: (e: RunEvent) => void,
   isClosed: () => boolean
 ): Promise<void> {
-  for (let i = 0; i < 80 && !isClosed(); i++) {
+  for (let i = 0; i < MAX_POLLS && !isClosed(); i++) {
     const detail = await get<RunDetailResponse>(`/api/runs/${runId}`);
     for (const row of detail.events ?? []) {
       const event = normalizeRunEvent(runId, row);
@@ -220,7 +224,7 @@ async function pollRunEvents(
       onEvent(event);
       if (event.status && TERMINAL_STATUSES.has(event.status)) return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
 
