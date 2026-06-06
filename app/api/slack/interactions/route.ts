@@ -4,7 +4,7 @@
 import { verifySlackRequest } from '../../../../lib/slack/verify';
 import { openModal, postMessage } from '../../../../lib/slack/client';
 import { editModal } from '../../../../lib/slack/blocks';
-import { confirmBugBrief, dispatch, getDraft } from '../../../../lib/slack/backend';
+import { confirmBugBrief, getDraft } from '../../../../lib/slack/backend';
 import type { ConfirmInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -39,10 +39,6 @@ export async function POST(req: Request): Promise<Response> {
     switch (action?.action_id) {
       case 'reflex_confirm':
         confirmInBackground(runId); // package_confirmed -> diagnosed; status thread animates via events
-        return new Response('', { status: 200 });
-
-      case 'reflex_dispatch': // Gate 2: approve the diagnosis -> dispatch fix -> PR
-        dispatchInBackground(runId);
         return new Response('', { status: 200 });
 
       case 'reflex_edit': {
@@ -92,18 +88,5 @@ export async function POST(req: Request): Promise<Response> {
 function confirmInBackground(runId: string, input: ConfirmInput = {}): void {
   void confirmBugBrief(runId, input).catch((error) => {
     console.error('Reflex confirmation failed', error);
-  });
-}
-
-/**
- * Fires Gate-2 dispatch without blocking Slack's three-second acknowledgement window.
- *
- * @param runId Reflex run ID.
- * @returns Nothing.
- * @sideEffects Calls Yash's /dispatch orchestrator (→ Replicas / scripted fallback → PR).
- */
-function dispatchInBackground(runId: string): void {
-  void dispatch(runId, { createPr: true }).catch((error) => {
-    console.error('Reflex dispatch failed', error);
   });
 }

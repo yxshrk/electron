@@ -4,9 +4,9 @@
 // job here is just to mirror the run status into the thread (Yash PR #8 wiring note).
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { recorderBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../../lib/slack/blocks';
+import { recorderBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
-import { createRun, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
+import { createRun, subscribe } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -52,18 +52,12 @@ async function run(channelId: string): Promise<void> {
   // Slack confirm starts diagnose + dispatch. Here we just render status from Yash's /events (SSE). Yash persists our
   // channel/thread, so a deploy could also push these — for now we subscribe in-process.
   let timelineTs: string | undefined;
-  let dispatchPrompted = false;
   const unsub = subscribe(runId, async (ev) => {
     if (!timelineTs) {
       const m = await postMessage({ channel: root.channel, thread_ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
       timelineTs = m.ts;
     } else {
       await updateMessage({ channel: root.channel, ts: timelineTs, text: ev.title, blocks: blocksForEvent(ev) });
-    }
-    if (ev.status === 'diagnosed' && !dispatchPrompted) {
-      dispatchPrompted = true;
-      const diag = await getDiagnosis(runId).catch(() => ({ hypotheses: [] }));
-      await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Diagnosis ready — approve the fix?', blocks: dispatchPromptBlocks(runId, diag) });
     }
     if (ev.status === 'shipped') {
       const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
