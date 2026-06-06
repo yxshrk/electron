@@ -61,8 +61,31 @@ export async function draftBugBrief(runId: string): Promise<ReportDraft> {
 }
 
 export async function confirmBugBrief(runId: string, _input?: ConfirmInput): Promise<{ ok: true }> {
-  emitSequence(runId); // confirmation kicks off the scripted diagnose→ship run
+  emitConfirmSequence(runId); // Gate 1: confirm → diagnosed, then STOP (waits for Gate-2 dispatch)
   return { ok: true };
+}
+
+/** Gate 2: scripted dispatch → reproduce → fix → ship (PR). */
+export async function dispatch(
+  runId: string,
+  _opts?: { hypothesisId?: string; provider?: 'replicas' | 'scripted'; createPr?: boolean },
+): Promise<{ ok: true }> {
+  emitDispatchSequence(runId);
+  return { ok: true };
+}
+
+/** Canned diagnosis for the Gate-2 approval card. */
+export async function getDiagnosis(
+  _runId: string,
+): Promise<{ symptom?: string; hypotheses: Array<{ id: string; title: string; confidence?: number }> }> {
+  return {
+    symptom: 'Report export hangs on large datasets',
+    hypotheses: [
+      { id: 'hyp_1', title: 'Unbounded report query', confidence: 0.72 },
+      { id: 'hyp_2', title: 'Missing pagination on export', confidence: 0.61 },
+      { id: 'hyp_3', title: 'Request timeout mismatch', confidence: 0.4 },
+    ],
+  };
 }
 
 // --- event stream ---
@@ -80,15 +103,21 @@ function emit(runId: string, partial: Omit<RunEvent, 'runId' | 'createdAt'>): vo
   listeners.get(runId)?.forEach((fn) => fn(ev));
 }
 
-function emitSequence(runId: string): void {
-  const repo = runs.get(runId)?.input.repoUrl ?? 'https://github.com/yxshrk/electron';
+function emitConfirmSequence(runId: string): void {
   const steps: Array<[number, Omit<RunEvent, 'runId' | 'createdAt'>]> = [
     [150, { eventType: 'package.confirmed', status: 'package_confirmed', title: 'Confirmed', detail: 'You confirmed the report' }],
     [800, { eventType: 'diagnosis.created', status: 'diagnosed', title: 'Diagnosed', detail: 'Symptom + 3 hypotheses' }],
-    [1600, { eventType: 'agent.dispatched', status: 'dispatched', title: 'Dispatched', detail: 'Hypotheses → sandboxes' }],
-    [2800, { eventType: 'agent.reproduced', status: 'reproduced', title: 'Reproduced', detail: 'Export timed out at 30s on 10k rows' }],
-    [3800, { eventType: 'agent.fixed', status: 'fixed', title: 'Fixed', detail: 'Added pagination; test passes' }],
-    [4600, { eventType: 'pr.opened', status: 'shipped', title: 'PR opened', detail: 'Batch export + stream progress', url: `${repo}/pull/42`, payload: { prUrl: `${repo}/pull/42` } }],
+  ];
+  for (const [ms, partial] of steps) setTimeout(() => emit(runId, partial), ms);
+}
+
+function emitDispatchSequence(runId: string): void {
+  const repo = runs.get(runId)?.input.repoUrl ?? 'https://github.com/yxshrk/electron';
+  const steps: Array<[number, Omit<RunEvent, 'runId' | 'createdAt'>]> = [
+    [150, { eventType: 'agent.dispatched', status: 'dispatched', title: 'Dispatched', detail: 'Top hypothesis → sandbox' }],
+    [1400, { eventType: 'agent.reproduced', status: 'reproduced', title: 'Reproduced', detail: 'Export timed out at 30s on 10k rows' }],
+    [2400, { eventType: 'agent.fixed', status: 'fixed', title: 'Fixed', detail: 'Added pagination; test passes' }],
+    [3200, { eventType: 'pr.opened', status: 'shipped', title: 'PR opened', detail: 'Batch export + stream progress', url: `${repo}/pull/42`, payload: { prUrl: `${repo}/pull/42` } }],
   ];
   for (const [ms, partial] of steps) setTimeout(() => emit(runId, partial), ms);
 }

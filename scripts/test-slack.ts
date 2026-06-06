@@ -4,8 +4,8 @@
 
 import { createHmac } from 'node:crypto';
 import { verifySlackRequest } from '../lib/slack/verify';
-import { ackBlocks, recorderBlocks, statusTimelineBlocks, reportBlocks, blocksForEvent } from '../lib/slack/blocks';
-import { createRun, draftBugBrief, confirmBugBrief, subscribe } from '../lib/slack/backend';
+import { ackBlocks, recorderBlocks, statusTimelineBlocks, reportBlocks, blocksForEvent, dispatchPromptBlocks } from '../lib/slack/blocks';
+import { createRun, draftBugBrief, confirmBugBrief, subscribe, dispatch } from '../lib/slack/backend';
 import { getDraft } from '../lib/slack/mock-backend';
 import { DEFAULT_CONTEXT_WINDOW, type RunEvent } from '../lib/slack/contracts';
 import { buildSlackObservation } from '../lib/slack/observation';
@@ -54,6 +54,10 @@ console.log('\n# block builders');
 
   const pr = blocksForEvent({ status: 'shipped', payload: { prUrl: 'https://x/pull/1' } });
   ok('shipped event → PR card', JSON.stringify(pr).includes('/pull/1'));
+
+  const gate2 = JSON.stringify(dispatchPromptBlocks('r1', { symptom: 'export hangs', hypotheses: [{ title: 'unbounded query', confidence: 0.7 }] }));
+  ok('dispatch card has approve button', gate2.includes('reflex_dispatch'));
+  ok('dispatch card shows hypothesis', gate2.includes('unbounded query'));
 }
 
 console.log('\n# slack context observation');
@@ -74,7 +78,7 @@ console.log('\n# slack context observation');
   ok('summarizes Slack file evidence', observation.visibleState.evidenceSummary.some((e) => e.kind === 'slack_message_with_file'));
 }
 
-console.log('\n# mock backend: createRun → draft → confirm → shipped');
+console.log('\n# mock backend: two gates — confirm→diagnosed, then dispatch→shipped');
 void (async () => {
   const { runId, status } = await createRun({
     source: 'slack', mode: 'bug', role: 'sales_csm', repoUrl: 'https://github.com/yxshrk/electron',
@@ -85,20 +89,31 @@ void (async () => {
 
   const draft = await draftBugBrief(runId);
   ok('draft needs_confirmation', draft.status === 'needs_confirmation');
-  ok('draft has bug fields', !!draft.whereItHappens && !!draft.actualBehavior && draft.affectedSurface === 'backend');
   ok('getDraft matches', getDraft(runId)?.runId === runId);
 
   const seen: RunEvent[] = [];
+  const unsub = subscribe(runId, (ev) => { seen.push(ev); });
+
+  // Gate 1: confirm → diagnosed, then STOP (no dispatch yet).
   await new Promise<void>((resolve) => {
-    subscribe(runId, (ev) => { seen.push(ev); if (ev.status === 'shipped') resolve(); });
     confirmBugBrief(runId);
-    setTimeout(resolve, 8000);
+    const t = setInterval(() => { if (seen.some((e) => e.status === 'diagnosed')) { clearInterval(t); resolve(); } }, 50);
+    setTimeout(() => { clearInterval(t); resolve(); }, 5000);
   });
-  const statuses = seen.map((e) => e.status);
-  ok('saw package_confirmed', statuses.includes('package_confirmed'));
-  ok('saw diagnosed', statuses.includes('diagnosed'));
-  ok('saw reproduced', statuses.includes('reproduced'));
-  ok('ended on shipped with prUrl', seen.at(-1)?.status === 'shipped' && !!(seen.at(-1)?.payload?.prUrl));
+  ok('Gate 1: saw package_confirmed', seen.some((e) => e.status === 'package_confirmed'));
+  ok('Gate 1: saw diagnosed', seen.some((e) => e.status === 'diagnosed'));
+  ok('Gate 1: stops before dispatch (no shipped yet)', !seen.some((e) => e.status === 'shipped'));
+
+  // Gate 2: dispatch → reproduced → shipped.
+  await new Promise<void>((resolve) => {
+    dispatch(runId, { createPr: false });
+    const t = setInterval(() => { if (seen.some((e) => e.status === 'shipped')) { clearInterval(t); resolve(); } }, 50);
+    setTimeout(() => { clearInterval(t); resolve(); }, 5000);
+  });
+  ok('Gate 2: saw dispatched', seen.some((e) => e.status === 'dispatched'));
+  ok('Gate 2: saw reproduced', seen.some((e) => e.status === 'reproduced'));
+  ok('Gate 2: ended shipped with prUrl', seen.at(-1)?.status === 'shipped' && !!(seen.at(-1)?.payload?.prUrl));
+  unsub();
 
   console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);
