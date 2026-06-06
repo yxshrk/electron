@@ -26,7 +26,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 - Capture a user role, screen context, and natural-language problem report.
 - Convert vague user language into a structured technical symptom.
 - Generate a ranked hypothesis tree tied to codebase context.
-- Dispatch coding agents in parallel to reproduce top hypotheses.
+- Dispatch a Replicas coding-agent task to reproduce the top hypothesis, with parallel fan-out as a stretch.
 - Record reproduction evidence before writing or accepting a fix.
 - Open a pull request linked to the original report, reproduction trace, and fix summary.
 - Demonstrate sponsor usage in load-bearing parts of the architecture.
@@ -38,7 +38,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 - Multi-tenant enterprise administration.
 - Production-grade privacy redaction for all screen content.
 - Guaranteed fix generation for arbitrary repos.
-- Native mobile reproduction unless the Limrun stretch path is implemented.
+- Native mobile reproduction in the MVP. Limrun is an optional mobile extension.
 
 For the hackathon, Reflex should optimize for a reliable end-to-end spine on one seeded repository and one or two rehearsed symptoms.
 
@@ -47,22 +47,22 @@ For the hackathon, Reflex should optimize for a reliable end-to-end spine on one
 The fastest credible version is:
 
 ```text
-Next.js + InsForge + GitHub API + one coding-agent path
+Vercel / Next.js + InsForge + Replicas + GitHub API
 ```
 
 Do not add Supabase for the MVP. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Next.js app with a separate database provider.
 
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
-| Product UI | Next.js | Role selector, screen capture, transcript input, pipeline dashboard, PR result |
+| Product UI and deployment | Vercel / Next.js | Role selector, screen capture, transcript input, pipeline dashboard, PR result |
 | Intake API | Next.js API routes | Receive Web UI and optional Slack reports |
 | Orchestration | Next.js API routes | Create diagnosis, dispatch agent work, update run state |
 | Database | InsForge Postgres | Sessions, observations, diagnoses, hypotheses, agent runs, PR metadata |
 | File storage | InsForge Storage | Screenshots, recordings, logs, reproduction evidence |
 | Live updates | InsForge Realtime or polling | Show pipeline state without refreshing |
 | AI/model access | InsForge Model Gateway or direct model API | Summarize reports and generate diagnosis JSON |
+| Agent execution | Replicas | Run sandboxed background coding tasks and produce fix evidence |
 | PR output | GitHub API | Create branches, commits, and pull requests |
-| Agent execution | Replicas, Devin, Codex, or scripted fallback | Reproduce and fix the seeded demo bug |
 
 Minimum demo loop:
 
@@ -71,10 +71,30 @@ Web UI report
 -> Next.js /api/intake
 -> InsForge stores session
 -> Next.js /api/diagnose creates structured symptom
--> Next.js /api/dispatch starts one agent or scripted sandbox run
+-> Next.js /api/dispatch starts a Replicas task or scripted sandbox fallback
 -> InsForge stores run status and evidence
 -> GitHub PR opens
 -> UI shows the PR
+```
+
+### Hackathon Sponsor Usage
+
+The MVP should use sponsors where they are load-bearing, not decorative.
+
+| Sponsor / Partner | MVP Role | Optional Role |
+| --- | --- | --- |
+| InsForge | Backend source of truth: Postgres, Storage, Realtime/polling, optional Model Gateway | Diagnostic memory graph and richer model routing |
+| Vercel | Host the Next.js UI and API routes | Use v0 to generate UI components quickly |
+| Replicas | Primary sandboxed coding-agent execution layer | Parallel hypothesis fan-out and CI/code-review feedback loops |
+| Cognition / Devin | Not required for first demo | Second agent path for confirmed implementation work |
+| Limrun | Not required for web-first MVP | Mobile reproduction path for iOS/Android bug reports |
+| AI Nexus | Hackathon host/community context | No technical integration |
+| Entrepreneur First | Startup/community context | No technical integration |
+
+Limrun should stay out of the main demo path unless the team intentionally switches to a mobile bug. The correct positioning is:
+
+```text
+If the reported issue is mobile, Reflex routes reproduction into Limrun so agents can build, run, and preview the app through remote Xcode builds, iOS simulators, Android emulators, and browser-shareable mobile previews.
 ```
 
 ## 5. User Roles and Diagnostic Lenses
@@ -227,7 +247,7 @@ Responsibilities:
 
 #### Replicas Sandbox Agents
 
-Purpose: Run parallel hypothesis investigation in isolated environments.
+Purpose: Run the MVP coding-agent execution path in sandboxed development environments.
 
 Responsibilities:
 
@@ -236,12 +256,15 @@ Responsibilities:
 - Execute the reproduction plan.
 - Capture logs, screenshots, test failures, or timing evidence.
 - Propose or implement a minimal fix.
+- Open or update the GitHub PR when the fix is ready.
 
-The key judging point is that confidence comes from reproduction, not from an LLM guess.
+Parallel fan-out is valuable, but it is not required for the first working demo. The minimum Replicas integration is one structured task that reproduces the seeded bug, applies the fix, and produces PR evidence.
+
+The key judging point is that confidence comes from sandbox reproduction, not from an LLM guess.
 
 #### Devin Implementation Agent
 
-Purpose: Implement the confirmed fix or feature after reproduction succeeds.
+Purpose: Optional second-agent path for implementing a confirmed fix or feature after reproduction succeeds.
 
 Responsibilities:
 
@@ -253,6 +276,20 @@ Responsibilities:
 Hackathon fallback:
 
 If Devin API access is unavailable or slow, keep Replicas as the primary executor and describe Devin as the second-agent path in the roadmap.
+
+#### Limrun Mobile Extension
+
+Purpose: Optional mobile reproduction path when a reported issue belongs to an iOS or Android app.
+
+Responsibilities:
+
+- Provide remote Xcode builds, iOS simulators, Android emulators, and browser-shareable mobile previews.
+- Let cloud coding agents compile and test mobile changes without local device setup.
+- Stream build logs and simulator status back to Reflex as reproduction evidence.
+
+Hackathon fallback:
+
+Do not include Limrun in the web-first MVP. Mention it as the natural extension for mobile bug reports.
 
 #### InsForge Backend and Memory
 
@@ -547,8 +584,8 @@ Event examples:
    - Unbounded query.
    - Missing pagination.
    - Request timeout mismatch.
-8. Orchestrator dispatches three sandbox agents through Replicas.
-9. One agent seeds a large dataset and reproduces the hang.
+8. Orchestrator dispatches one Replicas task for the top hypothesis, with parallel fan-out as a stretch.
+9. The Replicas task seeds a large dataset and reproduces the hang.
 10. The confirmed hypothesis is passed to the implementation path.
 11. Agent writes a minimal fix.
 12. Tests pass in the sandbox.
@@ -806,7 +843,7 @@ Name:
 - Always-on continuous watching.
 - Enterprise multi-tenant controls.
 - Full diagnostic memory improvement loop.
-- Mobile reproduction path unless Limrun is ready.
+- Mobile reproduction path through Limrun.
 - Deep Slack workflow automation.
 
 ## 14. Verification Strategy
@@ -860,7 +897,7 @@ Production requirements would include screenshot redaction, data retention contr
 | Sandbox startup is slow | Demo stalls | Pre-warm or show precomputed run if network fails |
 | Agent fixes wrong code | Demo loses credibility | Use seeded bugs with deterministic tests |
 | InsForge project is not linked before demo | Backend calls fail | Run `npx @insforge/cli current` during setup and keep a fallback project ready |
-| Sponsor APIs differ from assumptions | Integration delays | Keep Replicas, Devin, Slack, and Limrun outside the core dependency path |
+| Sponsor APIs differ from assumptions | Integration delays | Keep Devin, Slack, and Limrun outside the core dependency path; keep a scripted fallback if Replicas dispatch is unavailable |
 
 ## 17. Open Questions to Verify
 
@@ -868,7 +905,7 @@ Production requirements would include screenshot redaction, data retention contr
 - What is the fastest reliable way to pass a confirmed fix task into Devin during the hackathon?
 - Which model path should handle screen and voice extraction while preserving sponsor alignment?
 - Which InsForge project should be linked for the demo, and what service credentials should the Next.js API routes use?
-- Can Limrun be integrated quickly enough to justify a mobile stretch demo?
+- Do we want a mobile stretch demo, or should Limrun remain a roadmap extension only?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
 
 ## 18. Hackathon Demo Script
@@ -884,8 +921,8 @@ Demo:
 3. Say: "Every time the customer pulls the big export, it just hangs."
 4. Show the structured symptom.
 5. Show three hypotheses lighting up.
-6. Show Replicas agents running in parallel.
-7. Show one sandbox reproducing the hang.
+6. Show the top hypothesis dispatched to Replicas.
+7. Show the sandbox reproducing the hang.
 8. Show the code fix and passing test.
 9. Open the PR linked to the source report.
 
