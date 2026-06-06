@@ -232,3 +232,11 @@ __marimo__/
 .roo
 .trae
 .windsurf
+
+# Next.js / Node (Reflex app)
+/node_modules
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
