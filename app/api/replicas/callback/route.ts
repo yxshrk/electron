@@ -1,22 +1,27 @@
 import type { EvidencePayload } from '../../../../agent/replicas/types';
+import { persistEvidence } from '@/lib/insforge/evidence';
+
+export const runtime = 'nodejs';
 
 /**
- * Accepts Replicas or scripted fallback evidence callbacks.
+ * Accepts Replicas or scripted fallback evidence callbacks and persists them.
  *
  * @param request HTTP request containing an evidence payload.
- * @returns JSON response with normalized evidence for Yash's persistence layer.
- * @sideEffects None in this Luke-owned stub; persistence is wired by Yash's InsForge layer.
+ * @returns JSON response confirming persistence.
+ * @sideEffects Writes agent_runs + pull_requests and advances reflex_runs.status (Yash's layer).
  */
 export async function POST(request: Request): Promise<Response> {
   try {
     const payload = await request.json();
     const evidence = normalizeEvidencePayload(payload);
+    const persisted = await persistEvidence(evidence);
 
     return Response.json(
       {
         status: 'accepted',
         evidence,
-        persistence: 'pending_insforge_integration'
+        persistence: 'persisted',
+        ...persisted
       },
       { status: 202 }
     );

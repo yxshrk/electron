@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { diagnose } from "@/lib/diagnosis/diagnose";
-import { groundSymptom, groundingHint } from "@/lib/grounding/search";
+import { grepRepo, grepHint } from "@/lib/grounding/grep";
 import type { DispatchInput, Hypothesis, ReflexRunRow } from "@/lib/insforge/types";
 
 export const runtime = "nodejs";
@@ -51,10 +51,18 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     return NextResponse.json({ error: "diagnosis failed" }, { status: 500 });
   }
 
-  // Ground the symptom in the indexed codebase (pgvector). Empty if the repo isn't indexed yet.
-  const grounded = await groundSymptom(run.repo_url, result.symptom);
-  const hint = groundingHint(grounded);
-  const groundingEvidence = grounded.map((g) => `code: ${g.filePath}:${g.startLine}-${g.endLine}`);
+  // Ground the symptom in the codebase by grepping the timeline anchors (route/label/error).
+  // More precise than symptom->code embeddings; falls back to symptom words if no timeline.
+  const obs = await dbSelect<{ visible_state: { anchors?: string[] } }>(
+    "observations",
+    `run_id=eq.${runId}&order=created_at.desc&limit=1`
+  );
+  const anchors = obs[0]?.visible_state?.anchors?.length
+    ? obs[0].visible_state.anchors
+    : result.symptom.split(/\s+/);
+  const grounded = await grepRepo(run.repo_url, anchors);
+  const hint = grepHint(grounded);
+  const groundingEvidence = grounded.map((g) => `code: ${g.filePath}:${g.line} (${g.anchor})`);
 
   const diag = await dbInsert<{ id: string }>("diagnoses", {
     run_id: runId,
@@ -85,11 +93,27 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     });
   }
 
+  // Enrich the event so Laurence can render the Gate-2 confirmation card straight from the
+  // run_events feed (no second fetch). DB hypothesis ids + confidence + grounded files.
+  const hypothesesForSlack = hypotheses.map((h, i) => ({
+    id: h.id,
+    title: h.title,
+    confidence: result.hypotheses[i]?.confidence ?? 0,
+    reproductionPlan: h.reproductionPlan,
+    expectedFailure: h.expectedFailure,
+  }));
+
   await setStatus(runId, "diagnosed", {
     eventType: "diagnosis.created",
     title: "Diagnosis ready",
     detail: `${result.symptom} · ${hypotheses.length} hypotheses`,
-    payload: { diagnosisId: diag.id, symptom: result.symptom },
+    payload: {
+      diagnosisId: diag.id,
+      symptom: result.symptom,
+      roleLens: result.roleLens,
+      hypotheses: hypothesesForSlack,
+      grounding: grounded.map((g) => ({ filePath: g.filePath, line: g.line })),
+    },
   });
 
   // Build dispatch handoffs for Luke (he owns the actual dispatch-replicas route).
@@ -102,6 +126,9 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     hypothesis: h,
   }));
 
+  // Diagnosis is returned to Slack (via confirm-bug-brief's response + run_events) so the user can
+  // confirm the symptom + grounded hypotheses there. Dispatch to Luke is a SEPARATE, Slack-confirmed
+  // step (POST /api/runs/{runId}/dispatch) — we do NOT auto-dispatch here.
   return NextResponse.json({
     diagnosisId: diag.id,
     symptom: result.symptom,
