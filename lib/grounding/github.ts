@@ -31,10 +31,11 @@ function gh(headersExtra?: Record<string, string>): Record<string, string> {
 
 export async function fetchRepoFiles(
   repoUrl: string,
-  opts: { maxFiles?: number; maxBytes?: number } = {}
+  opts: { maxFiles?: number; maxBytes?: number; pathPrefix?: string } = {}
 ): Promise<RepoFile[]> {
   const maxFiles = opts.maxFiles ?? 40;
   const maxBytes = opts.maxBytes ?? 60_000;
+  const pathPrefix = opts.pathPrefix?.replace(/^\/+/, "") || "";
   const { owner, repo } = parseRepo(repoUrl);
 
   const meta = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: gh() });
@@ -50,6 +51,9 @@ export async function fetchRepoFiles(
 
   const candidates = tree
     .filter((t) => t.type === "blob")
+    // Scope to a subtree (e.g. the buggy app we link in the dashboard) when a prefix is given, so
+    // grounding greps only the files under test and the fix lands in that same subtree.
+    .filter((t) => !pathPrefix || t.path.startsWith(pathPrefix))
     .filter((t) => SOURCE_EXT.has(t.path.split(".").pop() ?? ""))
     .filter((t) => !/node_modules|\/dist\/|\/build\/|\.min\./.test(t.path))
     .filter((t) => (t.size ?? 0) <= maxBytes)

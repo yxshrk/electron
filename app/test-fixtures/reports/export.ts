@@ -1,4 +1,4 @@
-import type { ReportRow } from '../demo/report-fixture';
+import type { ReportRow } from './report-fixture';
 
 export interface ReportExportOptions {
   batchSize?: number;

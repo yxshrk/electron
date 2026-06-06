@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLargeReportFixture, expectedCsvLineCount } from '../lib/demo/report-fixture';
-import { exportReportCsv, exportReportCsvBatched } from '../lib/reports/export';
+import { createLargeReportFixture, expectedCsvLineCount } from '../app/test-fixtures/reports/report-fixture';
+import { exportReportCsv, exportReportCsvBatched } from '../app/test-fixtures/reports/export';
 
 test('default seeded export path reproduces the large report failure', () => {
   const rows = createLargeReportFixture();

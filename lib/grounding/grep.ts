@@ -13,14 +13,14 @@ export interface GrepHit {
 export async function grepRepo(
   repoUrl: string,
   anchors: string[],
-  opts: { maxHits?: number; maxFiles?: number } = {}
+  opts: { maxHits?: number; maxFiles?: number; pathPrefix?: string } = {}
 ): Promise<GrepHit[]> {
   const maxHits = opts.maxHits ?? 8;
   const cleaned = [...new Set(anchors.map((a) => a.toLowerCase().trim()).filter((a) => a.length >= 4))];
   if (cleaned.length === 0) return [];
 
   try {
-    const files = await fetchRepoFiles(repoUrl, { maxFiles: opts.maxFiles ?? 60 });
+    const files = await fetchRepoFiles(repoUrl, { maxFiles: opts.maxFiles ?? 60, pathPrefix: opts.pathPrefix });
     const hits: GrepHit[] = [];
     const seen = new Set<string>();
     // Rank anchors by specificity (longer first) so the most distinctive tokens win.

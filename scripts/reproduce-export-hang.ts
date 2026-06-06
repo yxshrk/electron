@@ -1,5 +1,5 @@
-import { createLargeReportFixture } from '../lib/demo/report-fixture';
-import { exportReportCsv } from '../lib/reports/export';
+import { createLargeReportFixture } from '../app/test-fixtures/reports/report-fixture';
+import { exportReportCsv } from '../app/test-fixtures/reports/export';
 
 /**
  * Runs the deterministic failing repro for the seeded export-hang bug.

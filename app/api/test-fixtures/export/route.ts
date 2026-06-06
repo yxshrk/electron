@@ -1,18 +1,20 @@
 // TEST FIXTURE — not part of the product.
 // A deliberately broken "report export" endpoint so we can exercise the Reflex recorder against a
 // real, reproducible bug. It does NOT contain the bug itself — it calls the SAME seeded module that
-// Reflex grounds the diagnosis in and that the fix patches: lib/reports/export.ts. Small datasets
-// return fast; large ones blow the synchronous row budget of exportReportCsvUnbounded() and 504.
-// One bug, one source of truth: grounded file == fixed file (no demo seam).
+// Reflex grounds the diagnosis in and that the fix patches: app/test-fixtures/reports/export.ts.
+// Small datasets return fast; large ones blow the synchronous row budget of
+// exportReportCsvUnbounded() and 504. The whole buggy app — UI, this endpoint's logic, and the
+// fixable module — lives under app/test-fixtures/, which is the exact subtree grounding greps and
+// the fix patches. One bug, one source of truth: grounded file == fixed file (no demo seam).
 import { NextRequest, NextResponse } from "next/server";
-import { createLargeReportFixture } from "@/lib/demo/report-fixture";
-import { exportReportCsv } from "@/lib/reports/export";
+import { createLargeReportFixture } from "@/app/test-fixtures/reports/report-fixture";
+import { exportReportCsv } from "@/app/test-fixtures/reports/export";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
 // Above this row count the unbounded synchronous exporter gives up. Matches the seeded bug's budget
-// in lib/reports/export.ts; the known fix routes large exports through the batched exporter instead.
+// in app/test-fixtures/reports/export.ts; the known fix routes large exports through the batched exporter instead.
 const SYNCHRONOUS_ROW_BUDGET = 10_000;
 
 export async function GET(req: NextRequest) {

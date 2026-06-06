@@ -1,5 +1,5 @@
-import { createLargeReportFixture, expectedCsvLineCount } from '../lib/demo/report-fixture';
-import { exportReportCsv } from '../lib/reports/export';
+import { createLargeReportFixture, expectedCsvLineCount } from '../app/test-fixtures/reports/report-fixture';
+import { exportReportCsv } from '../app/test-fixtures/reports/export';
 
 /**
  * Verifies that the default report export path handles the large fixture.
