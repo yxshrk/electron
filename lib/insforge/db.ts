@@ -58,6 +58,35 @@ export async function dbUpdate<T>(
   return (await res.json()) as T[];
 }
 
+/** DELETE rows matching `query`. */
+export async function dbDelete(table: string, query: string): Promise<void> {
+  const res = await fetch(recordsUrl(table, query), { method: "DELETE", headers: headers() });
+  await ensureOk(res, `delete ${table}`);
+}
+
+/** Call a Postgres function (RPC). Args are passed as JSON; vectors as "[..]" strings. */
+export async function dbRpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const { projectUrl } = insforgeConfig();
+  const res = await fetch(`${projectUrl}/api/database/rpc/${fn}`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(args),
+  });
+  await ensureOk(res, `rpc ${fn}`);
+  return (await res.json()) as T;
+}
+
+/** Bulk insert rows in one request (PostgREST accepts an array body). */
+export async function dbInsertMany(table: string, rows: Record<string, unknown>[]): Promise<void> {
+  if (rows.length === 0) return;
+  const res = await fetch(recordsUrl(table), {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify(rows),
+  });
+  await ensureOk(res, `insert-many ${table}`);
+}
+
 /** Convenience: fetch a single run by id (or null). */
 export async function getRun<T>(runId: string): Promise<T | null> {
   const rows = await dbSelect<T>("reflex_runs", `id=eq.${runId}&limit=1`);

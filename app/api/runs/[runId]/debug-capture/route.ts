@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { uploadObject } from "@/lib/insforge/storage";
-import { segmentDebugCapture } from "@/lib/diagnosis/segment";
+import { analyzeDebugCapture } from "@/lib/diagnosis/vision";
+import type { ImagePart } from "@/lib/ai/gateway";
 import { shortKey } from "@/lib/ids";
 import type { MediaArtifactRow, MediaKind, ReflexRunRow } from "@/lib/insforge/types";
 
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   const frameFiles = form.getAll("frames").filter((f): f is File => f instanceof File);
 
   const ids: { recording?: string; audio?: string; frames: string[] } = { frames: [] };
+  const visionFrames: ImagePart[] = [];
   let stored = 0;
 
   if (recordingFile && recordingFile.size > 0) {
@@ -66,20 +68,28 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   }
   for (const frame of frameFiles) {
     if (frame.size === 0) continue;
+    // Keep the first few frames as base64 for the vision pass (screen recording -> text).
+    if (visionFrames.length < 3) {
+      const bytes = new Uint8Array(await frame.arrayBuffer());
+      visionFrames.push({ base64: Buffer.from(bytes).toString("base64"), mime: frame.type || "image/png" });
+    }
     const row = await storeArtifact(runId, frame, "screenshot");
     ids.frames.push(row.id);
     stored++;
   }
 
-  // Segment the captured evidence into a compact, reusable observation.
-  const segment = segmentDebugCapture({
-    transcript,
-    notes,
-    recordingKind,
-    frameCount: ids.frames.length,
-    hasAudio: Boolean(ids.audio),
-    mediaArtifactIds: ids,
-  });
+  // Understand the capture: InsForge vision model on sampled frames, with a deterministic fallback.
+  const segment = await analyzeDebugCapture(
+    {
+      transcript,
+      notes,
+      recordingKind,
+      frameCount: ids.frames.length,
+      hasAudio: Boolean(ids.audio),
+      mediaArtifactIds: ids,
+    },
+    visionFrames
+  );
 
   await dbInsert("observations", {
     run_id: runId,
