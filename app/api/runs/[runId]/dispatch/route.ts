@@ -7,10 +7,12 @@ import { dispatchConfirmedHypothesis } from "@/agent/replicas/dispatch";
 import { dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { persistEvidence } from "@/lib/insforge/evidence";
-import type { DispatchInput, EvidencePayload, ReflexRunRow } from "@/lib/insforge/types";
+import type { DispatchInput, EvidencePayload, ReflexRunRow, RunStatus } from "@/lib/insforge/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const DISPATCH_STARTED_STATUSES: RunStatus[] = ["dispatched", "reproduced", "fixed", "shipped"];
 
 interface DiagnosisRow {
   id: string;
@@ -37,6 +39,9 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
   if (!run) return NextResponse.json({ error: "run not found" }, { status: 404 });
+  if (isDispatchAlreadyStarted(run.status)) {
+    return NextResponse.json({ status: run.status, idempotent: true });
+  }
 
   const body = (await req.json().catch(() => ({}))) as {
     hypothesisId?: string;
@@ -121,4 +126,15 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
 function resolveDispatchProvider(requestedProvider?: "replicas" | "scripted"): "replicas" | "scripted" {
   if (requestedProvider === "scripted") return "scripted";
   return process.env.REPLICAS_API_KEY ? "replicas" : "scripted";
+}
+
+/**
+ * Checks whether dispatch has already started or completed for a run.
+ *
+ * @param status Current Reflex run status.
+ * @returns True when a repeated dispatch request should be treated as a no-op.
+ * @sideEffects None.
+ */
+function isDispatchAlreadyStarted(status: RunStatus): boolean {
+  return DISPATCH_STARTED_STATUSES.includes(status);
 }

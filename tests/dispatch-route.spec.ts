@@ -8,3 +8,9 @@ test('dispatch route calls the dispatcher directly instead of self-fetching disp
   assert.match(dispatchRoute, /dispatchConfirmedHypothesis/);
   assert.doesNotMatch(dispatchRoute, /fetch\([^)]*dispatch-replicas/);
 });
+
+test('dispatch route treats already-started runs as idempotent no-ops', () => {
+  assert.match(dispatchRoute, /isDispatchAlreadyStarted\(run\.status\)/);
+  assert.match(dispatchRoute, /idempotent: true/);
+  assert.match(dispatchRoute, /"dispatched", "reproduced", "fixed", "shipped"/);
+});

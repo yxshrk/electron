@@ -174,6 +174,20 @@ export function dispatchPromptBlocks(
   return blocks;
 }
 
+/**
+ * Builds the Gate 2 accepted state that replaces the dispatch button.
+ *
+ * @returns Slack blocks with no interactive dispatch controls.
+ * @sideEffects None.
+ */
+export function dispatchStartedBlocks(): Block[] {
+  return [
+    header('🚀 Dispatch started'),
+    section('Reflex is sending the top hypothesis to the coding agent.'),
+    context('Watch the timeline above for reproduction, verification, and PR status.'),
+  ];
+}
+
 /** Modal opened on Edit Report — prefilled with the editable fields. */
 export function editModal(runId: string, draft: ReportDraft): Block {
   const input = (blockId: string, actionId: string, label: string, initial: string, multiline = true): Block => ({
