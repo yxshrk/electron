@@ -1,10 +1,12 @@
 "use client";
 
-// The buggy app under test (same-origin so the recorder can instrument its console/network).
-// "Export report" on a large dataset hits the unbounded /api/demo/export endpoint and hangs/504s.
+// TEST FIXTURE — NOT THE PRODUCT.
+// A throwaway buggy app used only to exercise the Reflex debug recorder (same-origin so its
+// console/network can be instrumented). "Export report" on a large dataset hits the unbounded
+// /api/test-fixtures/export endpoint and hangs/504s. Luke/Laurence: ignore for product purposes.
 import { useState } from "react";
 
-export default function DemoReports() {
+export default function TestFixtureReports() {
   const [rows, setRows] = useState(50000);
   const [state, setState] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [message, setMessage] = useState("");
@@ -14,10 +16,9 @@ export default function DemoReports() {
     setMessage("");
     const started = performance.now();
     try {
-      const res = await fetch(`/api/demo/export?rows=${rows}`);
+      const res = await fetch(`/api/test-fixtures/export?rows=${rows}`);
       const data = await res.json();
       if (!res.ok) {
-        // The buggy app logs the failure — instrumentation will capture this console.error.
         console.error("Export failed:", data.error);
         setState("error");
         setMessage(data.error ?? "Export failed");
@@ -34,6 +35,9 @@ export default function DemoReports() {
 
   return (
     <div style={{ fontFamily: "system-ui", padding: 24, color: "#e6e8ee", background: "#0b0c10", minHeight: "100vh" }}>
+      <div style={{ background: "#3a2a00", border: "1px solid #8a6d00", color: "#ffd479", borderRadius: 8, padding: "8px 12px", fontSize: 13, marginBottom: 16 }}>
+        🧪 TEST FIXTURE — seeded bug for Reflex recorder testing only. Not part of the product.
+      </div>
       <h1 style={{ fontSize: 20 }}>Acme Reports</h1>
       <p style={{ color: "#99a0b0" }}>Generate and export a customer report.</p>
 

@@ -17,7 +17,7 @@ interface DiagnoseResult {
 export default function DebugRecorder({ params }: { params: { runId: string } }) {
   const { runId } = params;
   const [phase, setPhase] = useState<Phase>("setup");
-  const [target, setTarget] = useState("/demo/reports");
+  const [target, setTarget] = useState(""); // the app you're debugging (same-origin to instrument)
   const [events, setEvents] = useState<CaptureEvent[]>([]);
   const [notes, setNotes] = useState("");
   const [transcript, setTranscript] = useState("");
@@ -184,16 +184,30 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
 
       <div className="panel">
         <div className="row">
-          <input value={target} onChange={(e) => setTarget(e.target.value)} style={{ flex: 1 }} />
+          <input value={target} onChange={(e) => setTarget(e.target.value)} style={{ flex: 1 }}
+            placeholder="URL of the app you're debugging (same-origin to capture console/network)" />
           {!recording && <button className="secondary" onClick={startScreen}>+ Screen record</button>}
           <button className="secondary" onClick={toggleMic}>{micOn ? "■ Mic" : "🎤 Mic"}</button>
         </div>
-        <iframe
-          ref={iframeRef}
-          src={target}
-          onLoad={instrument}
-          style={{ width: "100%", height: 360, border: "1px solid var(--border)", borderRadius: 10, marginTop: 12, background: "#fff" }}
-        />
+        <p className="muted" style={{ fontSize: 13, margin: "8px 0 0" }}>
+          Point this at the app you want to debug.{" "}
+          <a className="link" onClick={() => setTarget("/test-fixtures/reports")} style={{ cursor: "pointer" }}>
+            Load test fixture →
+          </a>{" "}
+          (a seeded buggy app for trying the recorder)
+        </p>
+        {target ? (
+          <iframe
+            ref={iframeRef}
+            src={target}
+            onLoad={instrument}
+            style={{ width: "100%", height: 360, border: "1px solid var(--border)", borderRadius: 10, marginTop: 12, background: "#fff" }}
+          />
+        ) : (
+          <div className="muted" style={{ marginTop: 12, padding: 28, textAlign: "center", border: "1px dashed var(--border)", borderRadius: 10 }}>
+            Enter a same-origin URL above (or load the test fixture) to start capturing.
+          </div>
+        )}
         <video ref={videoRef} muted playsInline style={{ display: recording ? "block" : "none", marginTop: 10 }} />
         <div className="row" style={{ marginTop: 12 }}>
           <span className={`pill ${instrumented ? "good" : "bad"}`}>{instrumented ? "● instrumented" : "not instrumented"}</span>
