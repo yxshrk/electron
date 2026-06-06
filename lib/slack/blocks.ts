@@ -44,14 +44,20 @@ function section(markdown: string): Block {
 function context(markdown: string): Block {
   return { type: 'context', elements: [{ type: 'mrkdwn', text: markdown }] };
 }
+function divider(): Block {
+  return { type: 'divider' };
+}
+function fields(...pairs: string[]): Block {
+  return { type: 'section', fields: pairs.map((text) => ({ type: 'mrkdwn', text })) };
+}
 
 /** First message after a slash command; we keep its ts and update it as status changes. */
 export function ackBlocks(mode: RunMode, repoUrl: string): Block[] {
   const repo = repoUrl.replace(/^https?:\/\/github\.com\//, '');
   return [
-    header(mode === 'bug' ? '🟡 Reflex — report' : '🟡 Reflex — record'),
-    section(`*Repo:* \`${repo}\``),
-    context(mode === 'bug' ? 'Gathering channel context and drafting a report…' : 'Spin up the recorder to capture the issue…'),
+    header(mode === 'bug' ? '🟡 Reflex is on it' : '🎥 Reflex — record mode'),
+    fields(`*Repo*\n\`${repo}\``, `*Mode*\n${mode === 'bug' ? 'Report (from chat)' : 'Record (live)'}`),
+    context(mode === 'bug' ? '🔄 Reading channel context and drafting a report…' : '🎬 Spin up the recorder to capture the issue…'),
   ];
 }
 
@@ -101,30 +107,32 @@ export function statusTimelineBlocks(current: RunStatus, detail?: string): Block
 
 /** The confirmable report card with Confirm / Edit Report / Add Attachment. */
 export function reportBlocks(draft: ReportDraft, contextLine?: string): Block[] {
-  const evidence = draft.evidenceSummary.map((e) => `• _${e.kind}_ — ${e.summary}`).join('\n');
+  const evidence = draft.evidenceSummary.map((e) => `• *${e.kind}* — ${e.summary}`).join('\n');
   const missing = draft.missingInfo.length ? draft.missingInfo.map((m) => `• ${m}`).join('\n') : '';
 
-  const blocks: Block[] = [
-    header('🔎 Does this bug report look right?'),
-    section(`*Where it happens*\n${draft.whereItHappens}`),
-    section(`*Actual behavior*\n${draft.actualBehavior}`),
-  ];
-  if (draft.expectedBehavior) blocks.push(section(`*Expected behavior*\n${draft.expectedBehavior}`));
-  blocks.push(section(`*Affected surface*  \`${draft.affectedSurface}\``));
-  if (evidence) blocks.push(section(`*Evidence*\n${evidence}`));
-  if (missing) blocks.push(section(`*Missing info*\n${missing}`));
-  blocks.push(section(`*Agent prompt preview*\n>${draft.agentPromptPreview.replace(/\n/g, '\n>')}`));
+  const blocks: Block[] = [header('🐞 Bug report — ready for your OK')];
+  if (contextLine) blocks.push(context(`🧠 ${contextLine}`));
+  blocks.push(divider());
+
+  // Compact two-column metadata.
+  blocks.push(fields(`*Where*\n${draft.whereItHappens}`, `*Surface*\n\`${draft.affectedSurface}\``));
+  blocks.push(section(`*😕 Actual*\n${draft.actualBehavior}`));
+  if (draft.expectedBehavior) blocks.push(section(`*✅ Expected*\n${draft.expectedBehavior}`));
+  if (evidence) blocks.push(section(`*🔎 Evidence*\n${evidence}`));
+  if (missing) blocks.push(section(`*❓ Still missing*\n${missing}`));
+
+  blocks.push(divider());
+  blocks.push(section(`*🤖 What the agent will be told*\n\`\`\`${draft.agentPromptPreview}\`\`\``));
   blocks.push({
     type: 'actions',
     block_id: `report:${draft.runId}`,
     elements: [
-      { type: 'button', style: 'primary', text: { type: 'plain_text', text: 'Confirm — go fix it', emoji: true }, action_id: 'reflex_confirm', value: draft.runId },
-      { type: 'button', text: { type: 'plain_text', text: 'Edit Report', emoji: true }, action_id: 'reflex_edit', value: draft.runId },
-      { type: 'button', text: { type: 'plain_text', text: 'Add Attachment', emoji: true }, action_id: 'reflex_add_attachment', value: draft.runId },
+      { type: 'button', style: 'primary', text: { type: 'plain_text', text: '✅ Confirm — go fix it', emoji: true }, action_id: 'reflex_confirm', value: draft.runId },
+      { type: 'button', text: { type: 'plain_text', text: '✏️ Edit Report', emoji: true }, action_id: 'reflex_edit', value: draft.runId },
+      { type: 'button', text: { type: 'plain_text', text: '📎 Add Attachment', emoji: true }, action_id: 'reflex_add_attachment', value: draft.runId },
     ],
   });
-  if (contextLine) blocks.push(context(contextLine));
-  blocks.push(context('Confirming spends agent credits to reproduce + fix in a sandbox.'));
+  blocks.push(context('⚡ Confirming spends agent credits to reproduce + fix in a sandbox.'));
   return blocks;
 }
 
@@ -155,9 +163,10 @@ export function editModal(runId: string, draft: ReportDraft): Block {
 /** Final card on the ship event. */
 export function prCardBlocks(prUrl: string, summary?: string): Block[] {
   return [
-    header('🟢 PR opened'),
-    section(`${summary ? `${summary}\n\n` : ''}<${prUrl}|View the pull request →>`),
-    context('Reproduced in a sandbox before fixing — the proof is in the PR.'),
+    header('🟢 Fix shipped'),
+    divider(),
+    section(`${summary ? `*${summary}*\n\n` : ''}🔗 <${prUrl}|View the pull request →>`),
+    context('✅ Reproduced in a sandbox before fixing — the proof is in the PR.'),
   ];
 }
 

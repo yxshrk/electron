@@ -51,14 +51,42 @@ export function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promis
 }
 
 /** Subscribe to the run event stream. Returns an unsubscribe fn.
- *  Yash's /events emits SSE named events: `run-event` (+ `done`/`error`) — PR #8. */
+ *  Yash's /events emits SSE named events: `run-event` (+ `done`/`error`) — PR #8.
+ *  NOTE: this runs server-side (Node), where EventSource doesn't exist — consume the SSE with
+ *  fetch + a ReadableStream reader instead. */
 export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => void {
   if (useMock) return mock.subscribe(runId, onEvent);
-  const es = new EventSource(`${baseUrl}/api/runs/${runId}/events`);
-  es.addEventListener('run-event', (m) => onEvent(JSON.parse((m as MessageEvent).data)));
-  es.addEventListener('done', () => es.close());
-  es.addEventListener('error', () => es.close());
-  return () => es.close();
+
+  const ac = new AbortController();
+  (async () => {
+    try {
+      const res = await fetch(`${baseUrl}/api/runs/${runId}/events`, {
+        headers: { Accept: 'text/event-stream' },
+        signal: ac.signal,
+      });
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split('\n\n');
+        buf = frames.pop() ?? '';
+        for (const frame of frames) {
+          const lines = frame.split('\n');
+          const evType = lines.find((l) => l.startsWith('event:'))?.slice(6).trim();
+          const dataLine = lines.find((l) => l.startsWith('data:'))?.slice(5).trim();
+          if (evType === 'done') { ac.abort(); return; }
+          if (!dataLine || evType === 'error') continue;
+          try { onEvent(JSON.parse(dataLine)); } catch { /* skip non-JSON keepalives */ }
+        }
+      }
+    } catch { /* aborted or stream ended */ }
+  })();
+
+  return () => ac.abort();
 }
 
 export const isMock = useMock;

@@ -27,7 +27,7 @@ console.log('\n# signature verify');
 
 console.log('\n# block builders');
 {
-  ok('bug ack header', JSON.stringify(ackBlocks('bug', 'https://github.com/x/y')).includes('report'));
+  ok('bug ack header', JSON.stringify(ackBlocks('bug', 'https://github.com/x/y')).includes('Report'));
   ok('debug ack header', JSON.stringify(ackBlocks('debug', 'https://github.com/x/y')).includes('record'));
   ok('recorder has Open Recorder url button', JSON.stringify(recorderBlocks('run_1', 'https://app/debug/run_1')).includes('Open Recorder'));
 
