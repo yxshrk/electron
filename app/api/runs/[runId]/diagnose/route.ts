@@ -126,9 +126,8 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     hypothesis: h,
   }));
 
-  // Diagnosis is returned to Slack (via confirm-bug-brief's response + run_events) so the user can
-  // confirm the symptom + grounded hypotheses there. Dispatch to Luke is a SEPARATE, Slack-confirmed
-  // step (POST /api/runs/{runId}/dispatch) — we do NOT auto-dispatch here.
+  // Diagnosis is returned to the confirm route and run_events. The confirm route owns the demo
+  // auto-dispatch step by calling POST /api/runs/{runId}/dispatch after this succeeds.
   return NextResponse.json({
     diagnosisId: diag.id,
     symptom: result.symptom,

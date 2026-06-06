@@ -114,17 +114,16 @@ export async function getDraft(runId: string): Promise<ReportDraft | undefined> 
 }
 
 /**
- * Confirms the report and starts Yash's diagnosis pipeline.
+ * Confirms the report and starts the backend's confirm-to-dispatch pipeline.
  *
  * @param runId Reflex run ID.
  * @param input Optional edited fields and confirmation metadata.
  * @returns Acknowledgement consumed by Slack interaction handlers.
- * @sideEffects Writes the confirmed package and diagnosis through Yash's run APIs.
+ * @sideEffects Writes the confirmed package and lets the run API diagnose and dispatch.
  */
 export async function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promise<{ ok: true }> {
   if (useMock) return mock.confirmBugBrief(runId, input);
   await post(`/api/runs/${runId}/confirm-bug-brief`, input);
-  await post(`/api/runs/${runId}/diagnose`, {});
   return { ok: true };
 }
 

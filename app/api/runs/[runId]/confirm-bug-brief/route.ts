@@ -1,6 +1,6 @@
 // POST /api/runs/{runId}/confirm-bug-brief
-// Confirms a draft (optionally edited), creates the intake_packages row, and gates the run at
-// package_confirmed. Diagnosis + Replicas must consume the confirmed package, not the raw draft (C3).
+// Confirms a draft (optionally edited), creates the intake_packages row, then runs the demo
+// back-half: diagnosis followed by automatic top-hypothesis dispatch.
 import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, dbSelect, dbUpdate, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
@@ -20,6 +20,21 @@ interface ObservationRow {
   visible_state: { symptomSeed?: string };
 }
 
+type AutoDispatchProvider = "replicas" | "scripted";
+
+interface AutoDispatchBody {
+  provider?: AutoDispatchProvider;
+  createPr: boolean;
+}
+
+/**
+ * Confirms the latest bug brief and starts diagnosis plus automatic dispatch.
+ *
+ * @param req HTTP request containing optional edited fields and confirmation metadata.
+ * @param params Route params containing the Reflex run ID.
+ * @returns Confirmed intake package JSON plus diagnosis and dispatch summaries when available.
+ * @sideEffects Updates the bug brief, creates an intake package, writes run status events, and may dispatch an agent.
+ */
 export async function POST(req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
@@ -84,7 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   await setStatus(runId, "package_confirmed", {
     eventType: "package.confirmed",
     title: "Intake package confirmed",
-    detail: "Report confirmed; diagnosis can run.",
+    detail: "Report confirmed; diagnosis and dispatch can run.",
     payload: { intakePackageId: pkg.id, bugBriefId: brief.id },
     actor: body.confirmedBy ?? "user",
   });
@@ -100,10 +115,11 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     status: "confirmed",
   };
 
-  // Cascade: confirm → diagnose → (auto) dispatch to Luke. One human "Confirm" runs the back half.
-  // Guarded so confirmation still succeeds even if diagnosis is slow/unavailable.
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  // Cascade: confirm → diagnose → dispatch. One human "Confirm" runs the demo back half.
+  // Guarded so confirmation still succeeds even if diagnosis or dispatch needs a retry.
+  const origin = req.nextUrl.origin;
   let diagnosis: unknown = null;
+  let dispatch: unknown = null;
   try {
     const dg = await fetch(`${origin}/api/runs/${runId}/diagnose`, { method: "POST" });
     if (dg.ok) diagnosis = await dg.json();
@@ -111,5 +127,63 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     /* diagnosis can be retried via POST /diagnose */
   }
 
-  return NextResponse.json({ ...result, diagnosis });
+  if (diagnosis && shouldAutoDispatch()) {
+    dispatch = await autoDispatchRun(origin, runId);
+  }
+
+  return NextResponse.json({ ...result, diagnosis, dispatch });
+}
+
+/**
+ * Checks whether confirmation should continue from diagnosis into dispatch.
+ *
+ * @returns True unless `REFLEX_AUTO_DISPATCH` is explicitly set to `false`.
+ * @sideEffects Reads environment configuration.
+ */
+function shouldAutoDispatch(): boolean {
+  return process.env.REFLEX_AUTO_DISPATCH !== "false";
+}
+
+/**
+ * Dispatches the top diagnosed hypothesis through the existing run dispatch route.
+ *
+ * @param origin Absolute app origin used for internal route calls.
+ * @param runId Reflex run ID to dispatch.
+ * @returns Parsed dispatch response when the request completes, otherwise an error summary.
+ * @sideEffects Calls `/api/runs/{runId}/dispatch`, which may create agent runs, PR rows, and GitHub PRs.
+ */
+async function autoDispatchRun(origin: string, runId: string): Promise<unknown> {
+  try {
+    const res = await fetch(`${origin}/api/runs/${runId}/dispatch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(autoDispatchBody()),
+    });
+    return await res.json().catch(() => ({ status: res.status }));
+  } catch (error) {
+    return { status: "dispatch_request_failed", error: String(error) };
+  }
+}
+
+/**
+ * Builds the dispatch options used by the Slack-first demo path.
+ *
+ * @returns Dispatch body for `/api/runs/{runId}/dispatch`.
+ * @sideEffects Reads optional dispatch provider and PR creation environment flags.
+ */
+function autoDispatchBody(): AutoDispatchBody {
+  const provider = parseAutoDispatchProvider(process.env.REFLEX_AUTO_DISPATCH_PROVIDER);
+  const createPr = process.env.REFLEX_AUTO_DISPATCH_CREATE_PR !== "false";
+  return provider ? { provider, createPr } : { createPr };
+}
+
+/**
+ * Parses the optional auto-dispatch provider override.
+ *
+ * @param value Raw environment value.
+ * @returns A supported provider value, or undefined to let dispatch choose Replicas/scripted fallback.
+ * @sideEffects None.
+ */
+function parseAutoDispatchProvider(value: string | undefined): AutoDispatchProvider | undefined {
+  return value === "replicas" || value === "scripted" ? value : undefined;
 }

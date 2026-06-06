@@ -197,13 +197,14 @@ flowchart LR
     DB --> Brief["POST /api/runs/{runId}/draft-bug-brief"]
     Brief --> Confirm["Slack confirm/edit/add attachment"]
     Confirm --> ConfirmAPI["POST /api/slack/interactions"]
-    ConfirmAPI --> Package["POST /api/runs/{runId}/intake-package"]
+    ConfirmAPI --> Package["POST /api/runs/{runId}/confirm-bug-brief"]
     Package --> DB
     Package --> Diagnose["POST /api/runs/{runId}/diagnose"]
     Diagnose --> Model["InsForge Model Gateway or direct LLM"]
     Diagnose --> Hypotheses["Hypotheses + reproduction plan"]
-    Hypotheses --> Dispatch["POST /api/runs/{runId}/dispatch-replicas"]
-    Dispatch --> Agent["Replicas task or scripted sandbox"]
+    Hypotheses --> Dispatch["POST /api/runs/{runId}/dispatch"]
+    Dispatch --> Provider["POST /api/runs/{runId}/dispatch-replicas"]
+    Provider --> Agent["Replicas task or scripted sandbox"]
     Agent --> Callback["POST /api/replicas/callback"]
     Callback --> Evidence["Reproduction evidence + fix"]
     Evidence --> DB
@@ -1293,9 +1294,29 @@ Response:
 }
 ```
 
+### `POST /api/runs/{runId}/dispatch`
+
+Selects the top diagnosed hypothesis, builds the canonical `DispatchInput`, and forwards it to `POST /api/runs/{runId}/dispatch-replicas`. This is called automatically after `POST /api/runs/{runId}/confirm-bug-brief` completes diagnosis.
+
+Default demo behavior:
+
+- `REFLEX_AUTO_DISPATCH=false` disables automatic dispatch.
+- `REFLEX_AUTO_DISPATCH_PROVIDER=replicas|scripted` optionally forces a provider.
+- `REFLEX_AUTO_DISPATCH_CREATE_PR=false` keeps scripted fallback in fixed/dry-run mode; otherwise the demo attempts to open a PR.
+
+Request:
+
+```json
+{
+  "hypothesisId": "hyp_1_unbounded_export_query",
+  "provider": "scripted",
+  "createPr": true
+}
+```
+
 ### `POST /api/runs/{runId}/dispatch-replicas`
 
-Dispatches the top hypothesis to Replicas. The route name is explicit because the MVP execution provider is Replicas; future providers can get their own dispatch routes.
+Executes the selected hypothesis through Replicas or the scripted fallback. The route name is explicit because the MVP execution provider is Replicas; future providers can get their own dispatch routes.
 
 Replicas task naming:
 
@@ -1315,9 +1336,19 @@ Request:
 
 ```json
 {
-  "hypothesisId": "hyp_1_unbounded_export_query",
-  "taskName": "replicas_run_export_hang_01_reproduce_export_hang",
-  "taskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query"
+  "runId": "run_export_hang_01",
+  "intakePackageId": "pkg_run_export_hang_01",
+  "repoUrl": "https://github.com/yxshrk/electron",
+  "role": "sales_csm",
+  "symptom": "Report export hangs on large datasets",
+  "hypothesis": {
+    "id": "hyp_1_unbounded_export_query",
+    "title": "Unbounded report query",
+    "reproductionPlan": "Seed a large dataset and trigger report export from the reporting page.",
+    "expectedFailure": "Export request exceeds timeout or the frontend spinner never resolves."
+  },
+  "provider": "scripted",
+  "createPr": true
 }
 ```
 
@@ -1325,10 +1356,15 @@ Response:
 
 ```json
 {
-  "agentRunId": "agent_run_export_hang_01",
-  "replicasTaskName": "replicas_run_export_hang_01_reproduce_export_hang",
-  "replicasTaskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query",
-  "status": "running"
+  "provider": "scripted",
+  "status": "shipped",
+  "taskName": "replicas_run_export_hang_01_unbounded_report_query",
+  "taskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query",
+  "evidence": {
+    "status": "shipped",
+    "provider": "scripted",
+    "prUrl": "https://github.com/yxshrk/electron/pull/42"
+  }
 }
 ```
 
@@ -1560,7 +1596,7 @@ Demo fixture output shape:
 
 #### Replicas Agent Prompt
 
-Used by `POST /api/runs/{runId}/dispatch-replicas` or the scripted fallback after diagnosis.
+Used by `POST /api/runs/{runId}/dispatch`, which forwards the canonical payload to Replicas or the scripted fallback after diagnosis.
 
 Prompt template:
 
@@ -1798,6 +1834,7 @@ Success criterion:
 - Implement `POST /api/runs/{runId}/confirm-bug-brief`.
 - Implement `POST /api/runs/{runId}/intake-package`.
 - Implement `POST /api/runs/{runId}/diagnose`.
+- Implement `POST /api/runs/{runId}/dispatch`.
 - Implement `POST /api/runs/{runId}/dispatch-replicas`.
 - Use a rehearsed transcript and seeded repo bug for deterministic behavior.
 - Start with one confirmed agent path or a scripted sandbox run.

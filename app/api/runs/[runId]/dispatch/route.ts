@@ -1,8 +1,7 @@
 // POST /api/runs/{runId}/dispatch
-// Gate 2: after the user confirms the DIAGNOSIS in Slack, trigger Luke's Replicas dispatch.
+// After the user confirms the report, trigger Luke's Replicas/scripted dispatch.
 // Builds a DispatchInput from the stored top (or chosen) hypothesis and forwards it to Luke's
-// /dispatch-replicas route. This is the single, Slack-confirmed handoff to Replicas — diagnose
-// no longer auto-dispatches.
+// /dispatch-replicas route. This is the single handoff used by Slack and manual retry paths.
 import { NextRequest, NextResponse } from "next/server";
 import { dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
@@ -67,8 +66,17 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     },
   };
 
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  const origin = req.nextUrl.origin;
   try {
+    const providerLabel = body.provider ?? (process.env.REPLICAS_API_KEY ? "replicas" : "scripted");
+    await setStatus(runId, "dispatched", {
+      eventType: "dispatch.started",
+      title: "Dispatched to Replicas",
+      detail: `${hyp.title} (${providerLabel})`,
+      payload: { hypothesisId: hyp.id, provider: providerLabel },
+      actor: "orchestrator",
+    });
+
     const res = await fetch(`${origin}/api/runs/${runId}/dispatch-replicas`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -76,14 +84,6 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     });
     const result = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(result?.error ?? `dispatch-replicas returned ${res.status}`);
-
-    await setStatus(runId, "dispatched", {
-      eventType: "dispatch.started",
-      title: "Dispatched to Replicas",
-      detail: `${hyp.title} (${result?.provider ?? "replicas"})`,
-      payload: { hypothesisId: hyp.id },
-      actor: "orchestrator",
-    });
 
     // The scripted fallback returns evidence inline — persist it now so the run advances past
     // `dispatched` (to fixed/shipped) and the PR surfaces. The live Replicas path persists later
