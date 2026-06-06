@@ -99,5 +99,17 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     debugArtifactCount: debugArtifacts.length,
     status: "confirmed",
   };
-  return NextResponse.json(result);
+
+  // Cascade: confirm → diagnose → (auto) dispatch to Luke. One human "Confirm" runs the back half.
+  // Guarded so confirmation still succeeds even if diagnosis is slow/unavailable.
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+  let diagnosis: unknown = null;
+  try {
+    const dg = await fetch(`${origin}/api/runs/${runId}/diagnose`, { method: "POST" });
+    if (dg.ok) diagnosis = await dg.json();
+  } catch {
+    /* diagnosis can be retried via POST /diagnose */
+  }
+
+  return NextResponse.json({ ...result, diagnosis });
 }

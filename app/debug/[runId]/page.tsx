@@ -31,7 +31,7 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
   const [draft, setDraft] = useState<ReportDraft | null>(null);
   const [diagnosis, setDiagnosis] = useState<DiagnoseResult | null>(null);
 
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const targetWinRef = useRef<Window | null>(null);
   const captureRef = useRef<CaptureController | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -52,27 +52,41 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
     c.toBlob((b) => b && framesRef.current.push(b), "image/png");
   }, []);
 
-  const instrument = useCallback(() => {
+  // Open the (same-origin) buggy app in its own window and instrument it — no iframe embed.
+  const openTarget = useCallback(() => {
+    const win = window.open(TARGET, "reflex-target", "popup,width=980,height=720");
+    if (!win) {
+      setError("Popup blocked — allow popups for this site and click again.");
+      return;
+    }
+    targetWinRef.current = win;
     captureRef.current?.stop();
     setEvents([]);
-    try {
-      const win = iframeRef.current?.contentWindow;
-      if (!win) return;
-      captureRef.current = startCapture(win, (e) => {
-        setEvents((prev) => [...prev, e]);
-        if (streamRef.current && (e.type === "network" || e.type === "error" || e.type === "click")) captureFrame();
-      });
-      setInstrumented(true);
-      setError(null);
-    } catch {
-      setInstrumented(false);
-      setError("Can't instrument this target (cross-origin). Use a same-origin URL, or rely on frames+notes.");
-    }
+    const hook = () => {
+      try {
+        if (win.closed) return;
+        if (win.document.readyState !== "complete") {
+          window.setTimeout(hook, 150);
+          return;
+        }
+        captureRef.current = startCapture(win, (e) => {
+          setEvents((prev) => [...prev, e]);
+          if (streamRef.current && (e.type === "network" || e.type === "error" || e.type === "click")) captureFrame();
+        });
+        setInstrumented(true);
+        setError(null);
+      } catch {
+        setInstrumented(false);
+        setError("Couldn't instrument the opened window (it must be same-origin).");
+      }
+    };
+    window.setTimeout(hook, 250);
   }, [captureFrame]);
 
   useEffect(() => {
     return () => {
       captureRef.current?.stop();
+      targetWinRef.current?.close();
     };
   }, []);
 
@@ -166,9 +180,9 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
         body: JSON.stringify({ bugBriefId: draft?.bugBriefId, confirmedBy: "recorder" }),
       });
       if (!c.ok) throw new Error(`confirm failed: ${await c.text()}`);
-      const dg = await fetch(`/api/runs/${runId}/diagnose`, { method: "POST" });
-      if (!dg.ok) throw new Error(`diagnose failed: ${await dg.text()}`);
-      setDiagnosis((await dg.json()) as DiagnoseResult);
+      // confirm cascades into diagnose + auto-dispatch to Luke; the diagnosis comes back here.
+      const cj = await c.json();
+      if (cj.diagnosis) setDiagnosis(cj.diagnosis as DiagnoseResult);
       setPhase("done");
     } catch (e) {
       setError(String(e));
@@ -188,17 +202,18 @@ export default function DebugRecorder({ params }: { params: { runId: string } })
       <div className="panel">
         <div className="row">
           <span className="muted" style={{ flex: 1, fontSize: 13 }}>
-            Reproduce the bug in the app below — Reflex captures its console, network, and clicks.
+            Open the buggy app, reproduce it, then come back and hit Done — Reflex captures its console, network, and clicks.
           </span>
           {!recording && <button className="secondary" onClick={startScreen}>+ Screen record</button>}
           <button className="secondary" onClick={toggleMic}>{micOn ? "■ Mic" : "🎤 Mic"}</button>
         </div>
-        <iframe
-          ref={iframeRef}
-          src={TARGET}
-          onLoad={instrument}
-          style={{ width: "100%", height: 360, border: "1px solid var(--border)", borderRadius: 10, marginTop: 12, background: "#fff" }}
-        />
+        {!instrumented ? (
+          <button onClick={openTarget} style={{ marginTop: 12 }}>Open the app &amp; start capturing →</button>
+        ) : (
+          <p className="muted" style={{ marginTop: 12 }}>
+            ● Capturing the opened window — reproduce the bug there (Export 50,000 rows), then return and click <strong>Done — diagnose</strong>.
+          </p>
+        )}
         <video ref={videoRef} muted playsInline style={{ display: recording ? "block" : "none", marginTop: 10 }} />
         <div className="row" style={{ marginTop: 12 }}>
           <span className={`pill ${instrumented ? "good" : "bad"}`}>{instrumented ? "● instrumented" : "not instrumented"}</span>
