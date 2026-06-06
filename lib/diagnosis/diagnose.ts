@@ -23,7 +23,14 @@ const ROLE_LENS: Record<Role, string> = {
   engineer: "Preserve technical specificity; skip business translation and go straight to reproduction.",
 };
 
-const EXPORT_HANG_PATTERN = /(?:report\s+)?export.*(?:hang|stuck|crash|freeze)|(?:hang|stuck|crash|freeze).*(?:report\s+)?export/i;
+// Match the export-hang however it's phrased — including the timeline's own vocabulary
+// ("...export failed (504)", "...export was slow (4.2s)") so the real captured-timeline path gets
+// the rich hypothesis tree, not the generic fallback (Gap 3).
+const EXPORT_SIGNAL = "hang|stuck|crash|freeze|spin|slow|timeout|timed|504|fail|unbounded|never";
+const EXPORT_HANG_PATTERN = new RegExp(
+  `export[\\s\\S]*(?:${EXPORT_SIGNAL})|(?:${EXPORT_SIGNAL})[\\s\\S]*export`,
+  "i"
+);
 
 /**
  * Produces a role-aware diagnosis and ranked hypotheses from a confirmed report.

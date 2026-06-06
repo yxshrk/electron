@@ -93,11 +93,27 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     });
   }
 
+  // Enrich the event so Laurence can render the Gate-2 confirmation card straight from the
+  // run_events feed (no second fetch). DB hypothesis ids + confidence + grounded files.
+  const hypothesesForSlack = hypotheses.map((h, i) => ({
+    id: h.id,
+    title: h.title,
+    confidence: result.hypotheses[i]?.confidence ?? 0,
+    reproductionPlan: h.reproductionPlan,
+    expectedFailure: h.expectedFailure,
+  }));
+
   await setStatus(runId, "diagnosed", {
     eventType: "diagnosis.created",
     title: "Diagnosis ready",
     detail: `${result.symptom} · ${hypotheses.length} hypotheses`,
-    payload: { diagnosisId: diag.id, symptom: result.symptom },
+    payload: {
+      diagnosisId: diag.id,
+      symptom: result.symptom,
+      roleLens: result.roleLens,
+      hypotheses: hypothesesForSlack,
+      grounding: grounded.map((g) => ({ filePath: g.filePath, line: g.line })),
+    },
   });
 
   // Build dispatch handoffs for Luke (he owns the actual dispatch-replicas route).

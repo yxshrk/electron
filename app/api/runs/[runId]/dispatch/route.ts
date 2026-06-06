@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
-import type { DispatchInput, ReflexRunRow } from "@/lib/insforge/types";
+import { persistEvidence } from "@/lib/insforge/evidence";
+import type { DispatchInput, EvidencePayload, ReflexRunRow } from "@/lib/insforge/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -83,6 +84,17 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
       payload: { hypothesisId: hyp.id },
       actor: "orchestrator",
     });
+
+    // The scripted fallback returns evidence inline — persist it now so the run advances past
+    // `dispatched` (to fixed/shipped) and the PR surfaces. The live Replicas path persists later
+    // via /api/replicas/callback. Guarded so a dispatch still succeeds if persistence hiccups.
+    if (result?.evidence) {
+      try {
+        await persistEvidence(result.evidence as EvidencePayload);
+      } catch {
+        /* evidence can be re-persisted via the callback */
+      }
+    }
     return NextResponse.json({ status: "dispatched", dispatchInput: input, result });
   } catch (e) {
     await setStatus(runId, "dispatch_failed", {
