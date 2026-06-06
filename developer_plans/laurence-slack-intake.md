@@ -10,14 +10,14 @@ You own Slack. You call Yash's run APIs. You do not call Luke directly.
 ## Product Flow You Own
 
 ```text
-/reflex-bug-mode
+/reflex-report
   -> create bug run
   -> fetch latest 100 Slack message candidates
   -> fetch latest 3 nearby attachments
   -> send context and media metadata to Yash
   -> show generated report with Confirm / Edit Report / Add Attachment
 
-/reflex-debug-mode
+/reflex-record
   -> create debug run
   -> show Open Recorder link
   -> when capture completes, show the same generated report confirmation card
@@ -32,7 +32,7 @@ After confirmation
 | Output | Route / Shape | Consumer |
 | --- | --- | --- |
 | Bug-mode run request | `POST /api/runs` with `mode: "bug"` | Yash |
-| Debug-mode run request | `POST /api/runs` with `mode: "debug"` | Yash |
+| Record-path run request | `POST /api/runs` with `mode: "debug"` | Yash |
 | Slack context candidates | `POST /api/runs/{runId}/context` | Yash |
 | Slack file metadata | `POST /api/runs/{runId}/media` | Yash |
 | User confirmation | `POST /api/runs/{runId}/confirm-bug-brief` | Yash |
@@ -50,8 +50,8 @@ After confirmation
 ## Owned Files
 
 ```text
-app/api/slack/reflex-bug-mode/route.ts
-app/api/slack/reflex-debug-mode/route.ts
+app/api/slack/reflex-report/route.ts
+app/api/slack/reflex-record/route.ts
 app/api/slack/events/route.ts
 app/api/slack/interactions/route.ts
 lib/slack/client.ts
@@ -65,12 +65,12 @@ or diagnosis code.
 
 ## Command Behavior
 
-### `/reflex-bug-mode`
+### `/reflex-report`
 
 Happy path:
 
 ```text
-/reflex-bug-mode
+/reflex-report
 ```
 
 Defaults:
@@ -92,12 +92,12 @@ Implementation details:
 - Ask Yash for `POST /api/runs/{runId}/draft-bug-brief`.
 - Render a Block Kit card with Confirm, Edit Report, and Add Attachment.
 
-### `/reflex-debug-mode`
+### `/reflex-record`
 
 Happy path:
 
 ```text
-/reflex-debug-mode
+/reflex-record
 ```
 
 Implementation details:
@@ -119,7 +119,7 @@ The confirmation card should show:
 - evidence summary
 - missing info placeholders
 - agent prompt preview
-- a short context line, for example: `Used /reflex-bug-mode, 8 channel messages, and 2 files`
+- a short context line, for example: `Used /reflex-report, 8 channel messages, and 2 files`
 
 Buttons:
 
@@ -157,12 +157,12 @@ pr_failed
 
 ## Build Plan
 
-1. Create the Slack app with `/reflex-bug-mode`, `/reflex-debug-mode`, events, and interactions.
+1. Create the Slack app with `/reflex-report`, `/reflex-record`, events, and interactions.
 2. Implement request signature verification.
-3. Implement `/reflex-bug-mode` against mocked `POST /api/runs`.
+3. Implement `/reflex-report` against mocked `POST /api/runs`.
 4. Add Slack history fetch and media metadata fetch.
 5. Implement the confirmation Block Kit card and interactions.
-6. Implement `/reflex-debug-mode` with Open Recorder link.
+6. Implement `/reflex-record` with Open Recorder link.
 7. Wire status polling or events to update the Slack thread.
 8. Rehearse the exact Slack-first demo path.
 
@@ -170,7 +170,7 @@ pr_failed
 
 | Layer | Real Path | Fallback |
 | --- | --- | --- |
-| Slack command | Live `/reflex-bug-mode` | Static copied Slack message |
+| Slack report command | Live `/reflex-report` | Static copied Slack message |
 | Chat history | Latest 100 messages | Seeded context payload |
 | Attachments | Slack files copied to InsForge | Pre-uploaded screenshot/video URL |
 | Confirmation | Live Block Kit buttons | Preconfirmed report row |

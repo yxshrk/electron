@@ -11,7 +11,7 @@ Laurence and Luke can work against stable interfaces.
 ## Product Flow You Own
 
 ```text
-Slack bug context or debug capture
+Slack report context or recording capture
   -> reflex_runs row
   -> copied Slack messages and media_artifacts
   -> observations
@@ -22,7 +22,7 @@ Slack bug context or debug capture
   -> dispatch handoff to Luke
 ```
 
-Bug mode and debug mode are sibling paths. Do not replace `/reflex-bug-mode` with debug mode.
+The report path and record path are sibling paths. Do not replace `/reflex-report` with `/reflex-record`.
 
 ## What You Produce
 
@@ -105,7 +105,7 @@ interface RunCreateInput {
 Defaults for the demo:
 
 - `source = slack`
-- `mode = bug` unless `/reflex-debug-mode`
+- `mode = bug` unless `/reflex-record`
 - `role = sales_csm`
 - `repoUrl = https://github.com/yxshrk/electron`
 - `contextWindow.messageLimit = 100`
@@ -122,13 +122,13 @@ Return:
 }
 ```
 
-`recordingUrl` is only needed for debug mode.
+`recordingUrl` is only needed for the record path.
 
 ## Context and Media Ingest
 
-### Bug Mode
+### Report Path
 
-`/reflex-bug-mode` sends copied Slack context once. Store it; do not ask the LLM whether to fetch more
+`/reflex-report` sends copied Slack context once. Store it; do not ask the LLM whether to fetch more
 history during the demo.
 
 Store:
@@ -138,9 +138,9 @@ Store:
 - Slack files and copied storage URLs in `media_artifacts`
 - status transition to `context_stored`
 
-### Debug Mode
+### Record Path
 
-`/reflex-debug-mode` creates a run, then the browser recorder posts:
+`/reflex-record` creates a run, then the browser recorder posts:
 
 - screen recording
 - audio recording

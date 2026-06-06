@@ -1,7 +1,7 @@
 -- Reflex MVP schema
 -- Source of truth: TECHNICAL_DOCUMENT.md Section 7 + developer_plans/shared-contracts.md.
 -- Owner: Yash. This migration matches the current two-entrypoint plan:
--- /reflex-bug-mode and /reflex-debug-mode both produce a confirmed intake package.
+-- /reflex-report and /reflex-record both produce a confirmed intake package.
 -- No BEGIN/COMMIT: InsForge runs each migration in a backend-managed transaction.
 
 create table reflex_runs (

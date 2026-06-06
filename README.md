@@ -85,7 +85,7 @@ P0 required for the demo:
 - Seeded export-hang bug with a failing repro command, large dataset fixture, known minimal fix,
   verification command, and scripted fallback PR path.
 - InsForge Postgres schema, `run_events`, and `reflex-evidence` storage bucket.
-- Slack `/reflex-bug-mode` with latest 100 message fetch, latest 3 attachment fetch, and
+- Slack `/reflex-report` with latest 100 message fetch, latest 3 attachment fetch, and
   Confirm/Edit/Add Attachment actions.
 - Core run APIs for context/media ingest, bug report draft, confirmation, intake package, diagnosis,
   dispatch, and callback.
@@ -94,7 +94,7 @@ P0 required for the demo:
 
 P1 after the spine works:
 
-- Live `/reflex-debug-mode` recorder.
+- Live `/reflex-record` recorder.
 - Real Replicas dispatch.
 - Vercel deployment.
 - Dashboard polish.
