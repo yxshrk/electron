@@ -2,13 +2,13 @@
 
 ## 1. Project Summary
 
-Reflex is a role-aware, screen-aware debugging assistant for agentic software development. A user shares their screen, identifies their role, and describes a product problem in plain language. Reflex converts that moment into a structured engineering symptom, dispatches coding agents to reproduce the issue in sandboxed environments, and opens a pull request with evidence that the bug was reproduced and fixed.
+Reflex is a role-aware debugging assistant for agentic software development. A user reports a product problem from Slack, attaches screen context when available, and identifies their role. Reflex converts that moment into a structured engineering symptom, dispatches coding agents to reproduce the issue in sandboxed environments, and opens a pull request with evidence that the bug was reproduced and fixed.
 
-The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on June 6, 2026. The event is focused on agentic developer tools, coding agents, autonomous workflows, agent infrastructure, and AI-native engineering systems. The fastest demo implementation is a single Next.js app backed by InsForge. Next.js owns the UI and orchestration API routes; InsForge owns the Postgres database, storage, realtime status updates, and backend project context.
+The demo target is the InsForge Hackathon hosted by AI Nexus in San Francisco on June 6, 2026. The event is focused on agentic developer tools, coding agents, autonomous workflows, agent infrastructure, and AI-native engineering systems. The fastest demo implementation is Slack-first: Slack owns the primary user experience, a small webhook/API layer owns orchestration, and InsForge owns the Postgres database, storage, realtime-capable state, and backend project context.
 
 One-line judge pitch:
 
-> Tag who you are, describe what is wrong while Reflex watches your screen, and it diagnoses the real engineering problem and dispatches coder agents to fix it. From a complaint to a merged PR, without a single ticket written.
+> Tag who you are in Slack, describe what is wrong, attach the screen evidence if you have it, and Reflex diagnoses the real engineering problem and dispatches coder agents to fix it. From a complaint to a merged PR, without a single ticket written.
 
 ## 2. Problem Statement
 
@@ -23,7 +23,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 
 ## 3. Goals
 
-- Capture a user role, screen context, and natural-language problem report.
+- Capture a user role, Slack message, and optional screen context.
 - Convert vague user language into a structured technical symptom.
 - Generate a ranked hypothesis tree tied to codebase context.
 - Dispatch a Replicas coding-agent task to reproduce the top hypothesis, with parallel fan-out as a stretch.
@@ -33,7 +33,7 @@ Reflex collapses this gap by treating the original screen-and-voice moment as th
 
 ## 4. Non-Goals
 
-- Fully robust always-on screen monitoring.
+- Fully robust always-on screen monitoring or a full web recording product.
 - Open-ended natural conversation across arbitrary applications.
 - Multi-tenant enterprise administration.
 - Production-grade privacy redaction for all screen content.
@@ -47,34 +47,37 @@ For the hackathon, Reflex should optimize for a reliable end-to-end spine on one
 The fastest credible version is:
 
 ```text
-Vercel / Next.js + InsForge + Replicas + GitHub API
+Slack + InsForge + Replicas + GitHub API
 ```
 
-Do not add Supabase for the MVP. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Next.js app with a separate database provider.
+Do not add Supabase for the MVP. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Slack bot with a separate database provider.
 
 | Layer | Tool | Responsibility |
 | --- | --- | --- |
-| Product UI and deployment | Vercel / Next.js | Role selector, screen capture, transcript input, pipeline dashboard, PR result |
-| Intake API | Next.js API routes | Receive Web UI and optional Slack reports |
-| Orchestration | Next.js API routes | Create diagnosis, dispatch agent work, update run state |
-| Database | InsForge Postgres | Sessions, observations, diagnoses, hypotheses, agent runs, PR metadata |
-| File storage | InsForge Storage | Screenshots, recordings, logs, reproduction evidence |
-| Live updates | InsForge Realtime or polling | Show pipeline state without refreshing |
-| AI/model access | InsForge Model Gateway or direct model API | Summarize reports and generate diagnosis JSON |
+| Primary UI | Slack | Slash command, thread updates, screenshot or recording attachments, final PR link |
+| Intake API | Minimal webhook/API layer | Receive Slack commands/events and normalize reports |
+| Orchestration | Minimal webhook/API layer | Draft bug brief, collect confirmation, create diagnosis, dispatch agent work, update run state |
+| Database | InsForge Postgres | Runs, observations, diagnoses, hypotheses, agent runs, PR metadata |
+| File storage | InsForge Storage | Screenshots, videos, recordings, logs, reproduction evidence |
+| Live updates | Slack thread updates | Show observe, diagnose, dispatch, reproduce, fix, and ship status |
+| AI/model access | InsForge Model Gateway or direct model API | Draft bug brief and generate diagnosis JSON |
 | Agent execution | Replicas | Run sandboxed background coding tasks and produce fix evidence |
 | PR output | GitHub API | Create branches, commits, and pull requests |
+| Optional status UI | Vercel / Next.js | Tiny `/run/:id` page or fuller dashboard only if time allows |
 
 Minimum demo loop:
 
 ```text
-Web UI report
--> Next.js /api/intake
--> InsForge stores session
--> Next.js /api/diagnose creates structured symptom
--> Next.js /api/dispatch starts a Replicas task or scripted sandbox fallback
+Slack /reflex command
+-> /api/slack/reflex-command
+-> InsForge stores run state
+-> /api/runs/{runId}/draft-bug-brief creates a compact brief
+-> user confirms or edits the brief in Slack
+-> /api/runs/{runId}/diagnose creates structured symptom
+-> /api/runs/{runId}/dispatch-replicas starts a Replicas task or scripted sandbox fallback
 -> InsForge stores run status and evidence
 -> GitHub PR opens
--> UI shows the PR
+-> Slack thread shows the PR
 ```
 
 ### Hackathon Sponsor Usage
@@ -84,14 +87,20 @@ The MVP should use sponsors where they are load-bearing, not decorative.
 | Sponsor / Partner | MVP Role | Optional Role |
 | --- | --- | --- |
 | InsForge | Backend source of truth: Postgres, Storage, Realtime/polling, optional Model Gateway | Diagnostic memory graph and richer model routing |
-| Vercel | Host the Next.js UI and API routes | Use v0 to generate UI components quickly |
+| Vercel | Not required for the Slack-first core flow unless used to host the webhook/API | Tiny run status page, complete dashboard, and v0-generated UI |
 | Replicas | Primary sandboxed coding-agent execution layer | Parallel hypothesis fan-out and CI/code-review feedback loops |
 | Cognition / Devin | Not required for first demo | Second agent path for confirmed implementation work |
 | Limrun | Not required for web-first MVP | Mobile reproduction path for iOS/Android bug reports |
 | AI Nexus | Hackathon host/community context | No technical integration |
 | Entrepreneur First | Startup/community context | No technical integration |
 
-Limrun should stay out of the main demo path unless the team intentionally switches to a mobile bug. The correct positioning is:
+Vercel should stay out of the main product dependency path for the first demo. Slack can be the entire user interface. If there is time, add a Vercel status page:
+
+```text
+/run/:id shows the same status stored in InsForge: observe, diagnose, dispatch, reproduce, fix, ship, and PR link.
+```
+
+Limrun should also stay out of the main demo path unless the team intentionally switches to a mobile bug. The correct positioning is:
 
 ```text
 If the reported issue is mobile, Reflex routes reproduction into Limrun so agents can build, run, and preview the app through remote Xcode builds, iOS simulators, Android emulators, and browser-shareable mobile previews.
@@ -119,60 +128,122 @@ Example:
 
 ```mermaid
 flowchart LR
-    WebUI["Next.js Web UI"] --> Intake["Next.js /api/intake"]
-    Slack["Optional Slack command"] --> Intake
-    Intake --> DB["InsForge Postgres"]
-    Intake --> Storage["InsForge Storage"]
-    DB --> Diagnose["Next.js /api/diagnose"]
+    Slack["Slack /reflex command"] --> SlackAPI["/api/slack/reflex-command"]
+    SlackFile["Slack screenshot/recording attachment"] --> SlackAPI
+    SlackAPI --> RunCreate["POST /api/runs"]
+    RunCreate --> DB["InsForge Postgres"]
+    RunCreate --> Storage["InsForge Storage"]
+    SlackFile --> Media["POST /api/runs/{runId}/media"]
+    Media --> Storage
+    Media --> DB
+    DB --> Brief["POST /api/runs/{runId}/draft-bug-brief"]
+    Brief --> Confirm["Slack confirm/edit"]
+    Confirm --> ConfirmAPI["POST /api/slack/interactions"]
+    ConfirmAPI --> Diagnose["POST /api/runs/{runId}/diagnose"]
     Diagnose --> Model["InsForge Model Gateway or direct LLM"]
     Diagnose --> Hypotheses["Hypotheses + reproduction plan"]
-    Hypotheses --> Dispatch["Next.js /api/dispatch"]
-    Dispatch --> Agent["Coding agent or scripted sandbox"]
-    Agent --> Evidence["Reproduction evidence + fix"]
+    Hypotheses --> Dispatch["POST /api/runs/{runId}/dispatch-replicas"]
+    Dispatch --> Agent["Replicas task or scripted sandbox"]
+    Agent --> Callback["POST /api/replicas/callback"]
+    Callback --> Evidence["Reproduction evidence + fix"]
     Evidence --> DB
     Evidence --> Storage
     Evidence --> GitHub["GitHub PR"]
-    DB --> Realtime["InsForge Realtime or polling"]
-    Realtime --> WebUI
+    DB --> SlackUpdate["Slack thread updates"]
+    GitHub --> SlackUpdate
+    DB --> StatusPage["Optional Vercel /run/:id page"]
 ```
 
 ### 6.1 Components
 
-#### Next.js App
+#### Slack Intake
 
-Purpose: Provide the full product surface and lightweight orchestration layer.
+Purpose: Provide the primary product surface for the MVP.
 
 Responsibilities:
 
-- Render the Web UI.
-- Serve `/api/intake`, `/api/diagnose`, `/api/dispatch`, `/api/agent-callback`, and optional Slack routes.
-- Call InsForge SDK or REST APIs for database, storage, and realtime state.
+- Receive `/reflex` slash commands.
+- Parse role, repo, and complaint text.
+- Accept screenshots or recordings as Slack attachments when available.
+- Ask the user to confirm or edit a compact bug brief before diagnosis starts.
+- Reply in-thread with pipeline status.
+- Show the final PR link in the same thread.
+
+Hackathon discipline:
+
+- Slack is the user interface for the first demo.
+- Do not block the Slack command response while agent work runs.
+- Store status in InsForge, then update the Slack thread as each stage completes.
+
+#### Clarification Gate
+
+Purpose: Turn messy Slack history into a confirmed, compact bug brief before spending tokens on diagnosis or agent execution.
+
+Responsibilities:
+
+- Read the slash command, thread history, and attachment metadata.
+- Include screenshots and videos as evidence artifacts.
+- Generate a short bug brief with placeholders for unclear details.
+- Ask the user to confirm or edit the brief in Slack.
+- Block diagnosis until the bug brief is confirmed.
+- Store both the draft and confirmed brief in InsForge.
+
+Bug brief fields:
+
+```text
+where_it_happens
+actual_behavior
+expected_behavior
+reproduction_context
+affected_surface
+evidence_summary
+user_role
+repo_url
+missing_info
+agent_prompt_preview
+```
+
+Hackathon discipline:
+
+- The clarification step should ask for confirmation, not start a long chat.
+- Use one Slack message with Confirm and Edit actions.
+- If the user confirms, continue automatically.
+- If the user edits, update the brief and continue from the confirmed version.
+
+#### Minimal Webhook/API Layer
+
+Purpose: Normalize Slack input and orchestrate the Reflex pipeline.
+
+Responsibilities:
+
+- Serve `/api/slack/reflex-command`, `/api/slack/events`, `/api/slack/interactions`, `/api/runs`, `/api/runs/{runId}/draft-bug-brief`, `/api/runs/{runId}/confirm-bug-brief`, `/api/runs/{runId}/diagnose`, `/api/runs/{runId}/dispatch-replicas`, and `/api/replicas/callback`.
+- Call InsForge SDK or REST APIs for database and storage state.
 - Call the model path for diagnosis.
-- Call GitHub to create the final PR.
+- Dispatch Replicas or the scripted fallback.
+- Call GitHub or consume Replicas output for the final PR.
 
 Hackathon discipline:
 
-- Keep long-running agent work out of a single blocking request.
-- Store status in InsForge and let the UI poll or subscribe.
-- Prefer one reliable agent path over multiple incomplete integrations.
+- This can be implemented with Next.js API routes, InsForge Edge Functions, or another small HTTP service.
+- If Vercel is used, keep it focused on hosting this API and an optional run page.
+- Long-running work should continue asynchronously after the Slack acknowledgement.
 
-#### Capture UI
+#### Optional Vercel Status Page
 
-Purpose: Collect the human report and show the live "reflex arc" pipeline.
+Purpose: Provide a visual page for judges if time allows.
 
 Responsibilities:
 
-- Let the user select a role.
-- Start browser screen capture with `getDisplayMedia`.
-- Capture voice transcript from a rehearsed or browser-supported speech flow.
-- Submit screen snapshots and transcript chunks to the backend.
-- Render pipeline status: observe, diagnose, dispatch, reproduce, fix, ship.
+- Render `/run/:id`.
+- Read the latest run, diagnosis, hypotheses, agent run, evidence, and PR URL from InsForge.
+- Show the pipeline: observe, diagnose, dispatch, reproduce, fix, ship.
+- Mirror the same state already posted in Slack.
 
 Hackathon discipline:
 
-- Screen sharing should be real.
-- Inputs should be rehearsed.
-- The UI should not depend on open-mic robustness.
+- This page is optional.
+- Slack thread updates are the primary UX.
+- Do not delay the core Slack-to-PR flow for a polished dashboard.
 
 #### Observation API
 
@@ -180,7 +251,7 @@ Purpose: Persist the original source-of-truth report.
 
 Responsibilities:
 
-- Create a capture session.
+- Create a Reflex run.
 - Store role, transcript, selected repo, screen snapshots, and timestamps.
 - Normalize observations into a format suitable for diagnosis.
 - Redact obvious secrets from transcripts and screenshots where practical.
@@ -241,7 +312,7 @@ Responsibilities:
 
 - Start one sandbox task per top hypothesis.
 - Pass each agent the repo, symptom, reproduction plan, and expected failure.
-- Stream task status to the UI.
+- Stream task status to Slack and the optional run page.
 - Select the first hypothesis that produces reproducible evidence.
 - Hand confirmed fixes to the implementation agent when appropriate.
 
@@ -297,8 +368,8 @@ Purpose: Provide backend primitives and persistent diagnostic memory.
 
 Responsibilities:
 
-- Store capture sessions, observations, diagnoses, hypotheses, agent runs, and PR metadata in Postgres.
-- Store screenshot, recording, log, and reproduction artifacts in Storage.
+- Store runs, observations, diagnoses, hypotheses, agent runs, and PR metadata in Postgres.
+- Store screenshot, video, recording, log, and reproduction artifacts in Storage.
 - Publish pipeline status changes through Realtime, or support simple polling from the UI.
 - Provide optional auth if the demo needs user identity.
 - Provide optional model gateway access for diagnosis generation.
@@ -323,41 +394,78 @@ Memory graph concept:
 
 ## 7. Data Model
 
-### 7.1 `capture_sessions`
+### 7.1 `reflex_runs`
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | UUID | Session identifier |
+| `id` | UUID | Run identifier |
+| `run_key` | Text | Human-readable run key, such as `run_export_hang_01` |
 | `source` | Text | `web`, `slack`, or `manual` |
 | `role` | Text | User-selected role |
 | `repo_url` | Text | Target repository |
 | `status` | Text | Current pipeline state |
-| `created_at` | Timestamp | Session start time |
-| `completed_at` | Timestamp | Session completion time |
+| `created_at` | Timestamp | Run start time |
+| `completed_at` | Timestamp | Run completion time |
 
 ### 7.2 `observations`
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Observation identifier |
-| `session_id` | UUID | Parent capture session |
+| `run_id` | UUID | Parent Reflex run |
 | `transcript` | Text | User speech transcript |
 | `screenshot_url` | Text | Stored screen snapshot |
 | `visible_state` | JSON | Extracted UI state |
 | `created_at` | Timestamp | Observation time |
 
-### 7.3 `diagnoses`
+### 7.3 `media_artifacts`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID | Media artifact identifier |
+| `run_id` | UUID | Parent Reflex run |
+| `artifact_key` | Text | Human-readable key, such as `media_run_export_hang_01_screenshot_1` |
+| `kind` | Text | `screenshot`, `video`, `screen_recording`, `log`, or `other` |
+| `source` | Text | `slack_file`, `upload`, `replicas`, or `manual` |
+| `storage_url` | Text | InsForge Storage URL or object reference |
+| `slack_file_id` | Text | Original Slack file ID if applicable |
+| `thumbnail_url` | Text | Optional preview image for Slack/status UI |
+| `summary` | Text | Compact human/model-readable summary |
+| `safe_to_share` | Boolean | Whether this artifact can be linked from PR/debug output |
+| `created_at` | Timestamp | Artifact creation time |
+
+### 7.4 `bug_briefs`
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | UUID | Bug brief identifier |
+| `run_id` | UUID | Parent Reflex run |
+| `brief_key` | Text | Human-readable brief key, such as `brief_run_export_hang_01` |
+| `where_it_happens` | Text | Product area, page, workflow, or surface where the bug appears |
+| `actual_behavior` | Text | What the user says or sees happening |
+| `expected_behavior` | Text | What should happen instead |
+| `reproduction_context` | Text | Known repro steps, data shape, user segment, or environment |
+| `affected_surface` | Text | `frontend`, `backend`, `mobile`, `infra`, or `unknown` |
+| `evidence_summary` | JSON | Compact references to screenshots, videos, recordings, and logs |
+| `missing_info` | JSON | Questions or placeholders that still need confirmation |
+| `agent_prompt_preview` | Text | Compact prompt that will be sent to diagnosis/Replicas after confirmation |
+| `status` | Text | Draft, needs_confirmation, confirmed, or rejected |
+| `created_at` | Timestamp | Brief creation time |
+| `confirmed_at` | Timestamp | Confirmation time |
+
+### 7.5 `diagnoses`
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Diagnosis identifier |
-| `session_id` | UUID | Parent capture session |
+| `run_id` | UUID | Parent Reflex run |
+| `bug_brief_id` | UUID | Confirmed bug brief used for diagnosis |
 | `symptom` | Text | Structured engineering symptom |
 | `role_lens` | Text | Role-specific translation strategy |
 | `evidence` | JSON | Evidence extracted from screen and transcript |
 | `created_at` | Timestamp | Diagnosis time |
 
-### 7.4 `hypotheses`
+### 7.6 `hypotheses`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -368,7 +476,7 @@ Memory graph concept:
 | `reproduction_plan` | Text | Sandbox instructions |
 | `status` | Text | Pending, running, reproduced, rejected, fixed |
 
-### 7.5 `agent_runs`
+### 7.7 `agent_runs`
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -381,26 +489,27 @@ Memory graph concept:
 | `created_at` | Timestamp | Run start time |
 | `completed_at` | Timestamp | Run completion time |
 
-### 7.6 `pull_requests`
+### 7.8 `pull_requests`
 
 | Field | Type | Description |
 | --- | --- | --- |
 | `id` | UUID | Internal PR record |
-| `session_id` | UUID | Source capture session |
+| `run_id` | UUID | Source Reflex run |
 | `agent_run_id` | UUID | Producing run |
 | `github_url` | Text | Pull request URL |
 | `summary` | Text | Fix summary |
 | `verification` | Text | Tests or reproduction evidence |
 | `created_at` | Timestamp | PR creation time |
 
-### 7.7 MVP Migration Shape
+### 7.9 MVP Migration Shape
 
 The MVP can start with straightforward Postgres tables and JSON payload columns. Keep the schema explicit enough for the UI and demo, then normalize later only if the product grows.
 
 ```sql
-create table capture_sessions (
+create table reflex_runs (
   id uuid primary key default gen_random_uuid(),
-  source text not null default 'web',
+  run_key text not null unique,
+  source text not null default 'slack',
   role text not null,
   repo_url text not null,
   status text not null default 'created',
@@ -410,16 +519,48 @@ create table capture_sessions (
 
 create table observations (
   id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references capture_sessions(id) on delete cascade,
+  run_id uuid not null references reflex_runs(id) on delete cascade,
   transcript text not null,
   screenshot_url text,
   visible_state jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
+create table media_artifacts (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  artifact_key text not null unique,
+  kind text not null,
+  source text not null default 'slack_file',
+  storage_url text not null,
+  slack_file_id text,
+  thumbnail_url text,
+  summary text,
+  safe_to_share boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table bug_briefs (
+  id uuid primary key default gen_random_uuid(),
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  brief_key text not null unique,
+  where_it_happens text not null,
+  actual_behavior text not null,
+  expected_behavior text,
+  reproduction_context text,
+  affected_surface text not null default 'unknown',
+  evidence_summary jsonb not null default '[]'::jsonb,
+  missing_info jsonb not null default '[]'::jsonb,
+  agent_prompt_preview text not null,
+  status text not null default 'draft',
+  created_at timestamptz not null default now(),
+  confirmed_at timestamptz
+);
+
 create table diagnoses (
   id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references capture_sessions(id) on delete cascade,
+  run_id uuid not null references reflex_runs(id) on delete cascade,
+  bug_brief_id uuid not null references bug_briefs(id) on delete cascade,
   symptom text not null,
   role_lens text not null,
   evidence jsonb not null default '[]'::jsonb,
@@ -449,7 +590,7 @@ create table agent_runs (
 
 create table pull_requests (
   id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references capture_sessions(id) on delete cascade,
+  run_id uuid not null references reflex_runs(id) on delete cascade,
   agent_run_id uuid references agent_runs(id) on delete set null,
   github_url text not null,
   summary text not null,
@@ -460,34 +601,41 @@ create table pull_requests (
 
 ## 8. API Surface
 
-### `POST /api/intake`
+### Naming Rules
 
-Creates a capture session from the Web UI or another intake surface.
+Use `run` for the whole Reflex pipeline and `task` for external execution work. Avoid mixing `session`, `job`, and `task` for the same concept. In route paths, `{runId}` should use the human-readable `run_key` value, not the raw database UUID.
 
-Request:
+| Concept | Name Pattern | Example |
+| --- | --- | --- |
+| Reflex run | `run_{shortId}` | `run_export_hang_01` |
+| Bug brief | `brief_{runId}` | `brief_run_export_hang_01` |
+| Media artifact | `media_{runId}_{kind}_{index}` | `media_run_export_hang_01_screenshot_1` |
+| Diagnosis | `diag_{shortId}` | `diag_export_hang_01` |
+| Hypothesis | `hyp_{rank}_{slug}` | `hyp_1_unbounded_export_query` |
+| Internal agent run | `agent_run_{shortId}` | `agent_run_export_hang_01` |
+| Replicas task | `replicas_{runId}_{slug}` | `replicas_run_export_hang_01_reproduce_export_hang` |
+| Slack thread update | `slack_update_{stage}` | `slack_update_reproduced` |
+| GitHub branch | `reflex/{runId}/{slug}` | `reflex/run_export_hang_01/fix-export-hang` |
 
-```json
-{
-  "source": "web",
-  "role": "sales",
-  "repoUrl": "https://github.com/example/reporting-demo",
-  "transcript": "Every time I pull the big export it just hangs.",
-  "screenshotBase64": "..."
-}
+Status values:
+
+```text
+created -> observed -> clarifying -> brief_drafted -> confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
 ```
 
-Response:
+Failure values:
 
-```json
-{
-  "sessionId": "sess_123",
-  "status": "created"
-}
+```text
+clarification_failed
+diagnosis_failed
+dispatch_failed
+reproduction_failed
+pr_failed
 ```
 
-### `POST /api/slack/commands`
+### `POST /api/slack/reflex-command`
 
-Optional Slack slash-command intake. It should normalize Slack input into the same internal shape as `/api/intake`.
+Primary MVP intake. Receives the Slack slash command, creates a run, acknowledges Slack quickly, and continues the pipeline asynchronously.
 
 Example command:
 
@@ -499,22 +647,157 @@ Response:
 
 ```json
 {
-  "sessionId": "sess_123",
+  "runId": "run_export_hang_01",
+  "status": "created",
+  "message": "Reflex run started. I will update this thread as the run progresses."
+}
+```
+
+### `POST /api/slack/events`
+
+Optional Slack Events API endpoint for attachments, threaded replies, and message events. Use it when the screenshot or recording arrives as a Slack file instead of inline command text.
+
+### `POST /api/slack/interactions`
+
+Receives Slack button clicks or modal submissions from the bug brief confirmation message.
+
+Actions:
+
+- `confirm_bug_brief`: confirm the drafted brief and continue to diagnosis.
+- `edit_bug_brief`: submit corrected fields, then confirm and continue.
+
+Request shape after normalization:
+
+```json
+{
+  "runId": "run_export_hang_01",
+  "action": "confirm_bug_brief",
+  "bugBriefId": "brief_run_export_hang_01",
+  "editedFields": null
+}
+```
+
+### `POST /api/runs`
+
+Internal normalized run creation. Slack, a future web form, or a seeded demo script should all map into this shape.
+
+Request:
+
+```json
+{
+  "source": "slack",
+  "role": "sales",
+  "repoUrl": "https://github.com/example/reporting-demo",
+  "transcript": "Customer says export hangs on large reports.",
+  "screenshotUrl": "https://...",
+  "slackChannelId": "C123",
+  "slackThreadTs": "1710000000.000100"
+}
+```
+
+Response:
+
+```json
+{
+  "runId": "run_export_hang_01",
   "status": "created"
 }
 ```
 
-### `POST /api/sessions/{sessionId}/observations`
+### `POST /api/runs/{runId}/draft-bug-brief`
 
-Stores a transcript chunk and optional screenshot.
+Reads the Slack command text, thread history, and attachment references, then drafts a compact bug brief for user confirmation. This route exists to avoid wasting model and agent tokens on the wrong interpretation of the bug.
+
+Request:
+
+```json
+{
+  "includeSlackThreadHistory": true,
+  "includeAttachments": true
+}
+```
+
+Response:
+
+```json
+{
+  "bugBriefId": "brief_run_export_hang_01",
+  "status": "needs_confirmation",
+  "whereItHappens": "Report export screen",
+  "actualBehavior": "When the user exports a large report, the frontend hangs or crashes.",
+  "expectedBehavior": "The report export should complete or show progress without crashing.",
+  "reproductionContext": "Large customer report export from the reporting page.",
+  "affectedSurface": "frontend",
+  "evidenceSummary": [
+    {
+      "kind": "video",
+      "mediaArtifactId": "media_run_export_hang_01_video_1",
+      "summary": "Screen recording shows export clicked, spinner shown, then frontend crash."
+    },
+    {
+      "kind": "screenshot",
+      "mediaArtifactId": "media_run_export_hang_01_screenshot_1",
+      "summary": "Screenshot shows the report export screen stuck in loading state."
+    }
+  ],
+  "missingInfo": [
+    "Exact browser is unknown",
+    "Dataset size is approximate"
+  ],
+  "agentPromptPreview": "Investigate the report export flow. The user reports that exporting a large report from the frontend hangs or crashes. Confirm whether the frontend export handler blocks, crashes, or waits on an unbounded backend response before changing code."
+}
+```
+
+Slack confirmation message:
+
+```text
+Reflex understood the bug this way:
+
+Where: Report export screen
+Actual: Exporting a large report hangs or crashes the frontend.
+Expected: Export should complete or show progress.
+Surface: frontend
+Evidence: video shows export click -> spinner -> frontend crash; screenshot shows stuck loading state.
+
+[Confirm] [Edit]
+```
+
+### `POST /api/runs/{runId}/confirm-bug-brief`
+
+Confirms the bug brief, optionally with edited fields from Slack. Diagnosis must only run after this succeeds.
+
+Request:
+
+```json
+{
+  "bugBriefId": "brief_run_export_hang_01",
+  "editedFields": {
+    "actualBehavior": "When export starts, the frontend crashes instead of just hanging."
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "bugBriefId": "brief_run_export_hang_01",
+  "status": "confirmed"
+}
+```
+
+### `POST /api/runs/{runId}/observations`
+
+Stores additional observations after the run exists. For the MVP, this is mostly for Slack file attachments that arrive after the slash command.
 
 Request:
 
 ```json
 {
   "transcript": "Every time I pull the big export it just hangs.",
-  "screenshotBase64": "...",
-  "timestampMs": 12000
+  "screenshotUrl": "https://...",
+  "recordingUrl": null,
+  "source": "slack_file"
 }
 ```
 
@@ -527,19 +810,47 @@ Response:
 }
 ```
 
-### `POST /api/sessions/{sessionId}/diagnose`
+### `POST /api/runs/{runId}/media`
 
-Generates a structured symptom and hypothesis tree.
+Stores screenshot, video, screen recording, log, or reproduction evidence metadata after the file is uploaded to InsForge Storage. Slack files should be copied into InsForge Storage first so Reflex has a durable reference independent of Slack retention.
+
+Request:
+
+```json
+{
+  "kind": "video",
+  "source": "slack_file",
+  "storageUrl": "insforge://reflex-evidence/run_export_hang_01/export-crash.mov",
+  "slackFileId": "F123",
+  "thumbnailUrl": "insforge://reflex-evidence/run_export_hang_01/export-crash-thumb.png",
+  "summary": "Screen recording shows the export button clicked, a loading spinner for several seconds, then the frontend crashes.",
+  "safeToShare": false
+}
+```
 
 Response:
 
 ```json
 {
-  "diagnosisId": "diag_123",
+  "mediaArtifactId": "media_run_export_hang_01_video_1",
+  "status": "stored"
+}
+```
+
+### `POST /api/runs/{runId}/diagnose`
+
+Generates a structured symptom and hypothesis tree from the confirmed bug brief. This route should reject runs that do not have a confirmed bug brief.
+
+Response:
+
+```json
+{
+  "diagnosisId": "diag_export_hang_01",
+  "bugBriefId": "brief_run_export_hang_01",
   "symptom": "Report export hangs on large datasets",
   "hypotheses": [
     {
-      "id": "hyp_1",
+      "id": "hyp_1_unbounded_export_query",
       "title": "Unbounded report query",
       "confidence": 0.72
     }
@@ -547,49 +858,102 @@ Response:
 }
 ```
 
-### `POST /api/diagnoses/{diagnosisId}/dispatch`
+### `POST /api/runs/{runId}/dispatch-replicas`
 
-Dispatches top hypotheses to agent sandboxes.
+Dispatches the top hypothesis to Replicas. The route name is explicit because the MVP execution provider is Replicas; future providers can get their own dispatch routes.
+
+Replicas task naming:
+
+```text
+Task name: replicas_{runId}_{action_slug}
+Task title: [Reflex] {symptom} - {hypothesis_title}
+```
+
+Example:
+
+```text
+Task name: replicas_run_export_hang_01_reproduce_export_hang
+Task title: [Reflex] Report export hangs on large datasets - Unbounded report query
+```
+
+Request:
+
+```json
+{
+  "hypothesisId": "hyp_1_unbounded_export_query",
+  "taskName": "replicas_run_export_hang_01_reproduce_export_hang",
+  "taskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query"
+}
+```
 
 Response:
 
 ```json
 {
-  "runIds": ["run_1", "run_2", "run_3"],
+  "agentRunId": "agent_run_export_hang_01",
+  "replicasTaskName": "replicas_run_export_hang_01_reproduce_export_hang",
+  "replicasTaskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query",
   "status": "running"
 }
 ```
 
-### `GET /api/sessions/{sessionId}/events`
+### `POST /api/replicas/callback`
 
-Streams pipeline events to the frontend over Server-Sent Events or WebSocket.
+Receives Replicas task updates, stores evidence in InsForge, and posts the matching Slack thread update.
+
+Request:
+
+```json
+{
+  "runId": "run_export_hang_01",
+  "agentRunId": "agent_run_export_hang_01",
+  "replicasTaskName": "replicas_run_export_hang_01_reproduce_export_hang",
+  "status": "reproduced",
+  "rootCause": "Report export loads all rows synchronously.",
+  "verification": "Large export fixture reproduces the timeout.",
+  "logsUrl": "https://..."
+}
+```
+
+### `GET /api/runs/{runId}/events`
+
+Optional endpoint for a Vercel status page. Streams pipeline events over Server-Sent Events or WebSocket if the team builds `/run/:id`.
 
 Event examples:
 
 ```json
 { "type": "diagnosis.created", "symptom": "Report export hangs on large datasets" }
-{ "type": "agent.reproduced", "runId": "run_1", "evidence": "Export test timed out at 30s" }
+{ "type": "agent.reproduced", "runId": "run_export_hang_01", "evidence": "Export test timed out at 30s" }
 { "type": "pr.opened", "url": "https://github.com/example/reporting-demo/pull/42" }
 ```
 
 ## 9. End-to-End Flow
 
-1. User selects `Sales / CSM`.
-2. User shares the report export screen.
-3. User says: "Every time the customer pulls the big export, it just hangs."
-4. Capture UI sends transcript and screen snapshot to the Observation API.
-5. Multimodal extraction identifies a report export loading state.
-6. Diagnosis service creates the symptom: "Report export hangs on large datasets."
-7. Diagnosis service ranks hypotheses:
+1. User runs `/reflex role:sales repo:https://github.com/example/reporting-demo Customer says export hangs on large reports.`
+2. User attaches or references a screenshot, video, or screen recording of the report export screen if available.
+3. Slack sends the command to `/api/slack/reflex-command`.
+4. The API normalizes the command into `POST /api/runs`.
+5. Slack file attachments are copied to InsForge Storage and registered through `POST /api/runs/{runId}/media`.
+6. `POST /api/runs/{runId}/draft-bug-brief` reads Slack history and media summaries, then drafts a compact bug brief.
+7. Slack asks the user to confirm or edit:
+   - Where the bug happens.
+   - What the bug looks like.
+   - Whether it is frontend, backend, mobile, infra, or unknown.
+   - What the user expected instead.
+   - What screenshots/videos show.
+8. User confirms the bug brief through `POST /api/slack/interactions`.
+9. Diagnosis service creates the symptom from the confirmed brief: "Report export hangs on large datasets."
+10. Diagnosis service ranks hypotheses:
    - Unbounded query.
    - Missing pagination.
    - Request timeout mismatch.
-8. Orchestrator dispatches one Replicas task for the top hypothesis, with parallel fan-out as a stretch.
-9. The Replicas task seeds a large dataset and reproduces the hang.
-10. The confirmed hypothesis is passed to the implementation path.
-11. Agent writes a minimal fix.
-12. Tests pass in the sandbox.
-13. GitHub PR opens with reproduction evidence and a link to the source capture session.
+11. Orchestrator dispatches one Replicas task for the top hypothesis, with parallel fan-out as a stretch.
+12. The Replicas task seeds a large dataset and reproduces the hang.
+13. The confirmed hypothesis is passed to the implementation path.
+14. Agent writes a minimal fix.
+15. Tests pass in the sandbox.
+16. GitHub PR opens with reproduction evidence and a link to the source Slack run.
+17. Slack thread receives the PR URL and final verification summary.
 
 ## 10. Demo Repository Requirements
 
@@ -619,16 +983,18 @@ Recommended product-role feature:
 
 ## 11. Implementation Plan
 
-### Phase 1: Create the Next.js Product Shell
+### Phase 1: Create Slack Intake
 
-- Create a Next.js app.
-- Build the first-screen dashboard instead of a landing page.
-- Add role selector, repo selector, transcript input, screen-share button, and pipeline timeline.
-- Add a right-side run panel for diagnosis, hypotheses, agent status, and PR output.
+- Create a Slack app with a `/reflex` slash command.
+- Implement `/api/slack/reflex-command`.
+- Parse `role`, `repo`, and complaint text from the command.
+- Reply immediately with a run ID and "started" status.
+- Normalize the command into the internal `POST /api/runs` payload.
+- Draft a bug brief and ask the user to confirm or edit it in Slack.
 
 Success criterion:
 
-- A user can submit a role-tagged report and see a session appear in the UI.
+- A user can start a Reflex run from Slack and confirm the bug brief in-thread.
 
 ### Phase 2: Connect InsForge
 
@@ -637,33 +1003,38 @@ Success criterion:
 - Run `npx @insforge/cli current` to verify the local project is linked.
 - Install `@insforge/sdk`.
 - Create the MVP tables with SQL migrations.
-- Create a private storage bucket for screenshots and evidence logs.
+- Create a private storage bucket for screenshots, videos, screen recordings, and evidence logs.
 - Use polling first; add InsForge Realtime only if there is time.
 
 Success criterion:
 
-- Sessions, observations, diagnoses, hypotheses, agent runs, and PR records persist in InsForge.
+- Runs, observations, diagnoses, hypotheses, agent runs, and PR records persist in InsForge.
 
 ### Phase 3: Build the Happy Path
 
-- Implement `/api/intake`.
-- Implement `/api/diagnose`.
-- Implement `/api/dispatch`.
+- Implement `POST /api/runs`.
+- Implement `POST /api/runs/{runId}/media`.
+- Implement `POST /api/runs/{runId}/draft-bug-brief`.
+- Implement `POST /api/slack/interactions`.
+- Implement `POST /api/runs/{runId}/confirm-bug-brief`.
+- Implement `POST /api/runs/{runId}/diagnose`.
+- Implement `POST /api/runs/{runId}/dispatch-replicas`.
 - Use a rehearsed transcript and seeded repo bug for deterministic behavior.
 - Start with one confirmed agent path or a scripted sandbox run.
 - Store each state transition in InsForge.
+- Post each state transition back into the Slack thread.
 
 Success criterion:
 
-- The pipeline reaches `reproduced` and `fixed` for the primary seeded bug.
+- The pipeline reaches `confirmed`, `reproduced`, and `fixed` for the primary seeded bug.
 
 ### Phase 4: Open the PR
 
 - Create a branch through the GitHub API or local git automation.
 - Commit the fix or demo patch.
-- Open a PR with source session, reproduction evidence, and verification notes.
+- Open a PR with source run, reproduction evidence, and verification notes.
 - Store the PR URL in InsForge.
-- Render the PR as the final `Ship` stage in the UI.
+- Post the PR as the final `Ship` stage in Slack.
 
 Success criterion:
 
@@ -671,11 +1042,12 @@ Success criterion:
 
 ### Phase 5: Add Polish Only After the Spine Works
 
-- Add real browser screen capture via `getDisplayMedia`.
-- Add screenshot upload to InsForge Storage.
-- Add speech-to-text or a transcript input fallback.
+- Add the optional Vercel `/run/:id` status page.
+- Add a fuller Vercel dashboard only if time allows.
+- Add real browser screen capture via `getDisplayMedia` only if the team decides to build a web capture surface.
+- Add richer screenshot/video upload handling to InsForge Storage.
+- Add speech-to-text or a transcript input fallback for the optional web surface.
 - Add InsForge Realtime status updates.
-- Add Slack intake.
 - Add parallel agent fan-out.
 
 Success criterion:
@@ -688,12 +1060,14 @@ Success criterion:
 NEXT_PUBLIC_APP_URL=
 INSFORGE_PROJECT_URL=
 INSFORGE_SERVICE_KEY=
+SLACK_SIGNING_SECRET=
+SLACK_BOT_TOKEN=
 GITHUB_TOKEN=
 GITHUB_REPO=
 MODEL_API_KEY=
 ```
 
-Keep these values out of the browser unless they are explicitly public. Server-side API routes should own all privileged InsForge, GitHub, model, and agent credentials.
+Keep these values out of the browser unless they are explicitly public. Server-side API routes or edge functions should own all privileged Slack, InsForge, GitHub, model, and agent credentials.
 
 ## 12. Team Execution Plan
 
@@ -703,9 +1077,9 @@ The team should split by interface boundaries, not by page sections. Each person
 
 | Owner | Primary Scope | Must Deliver | Depends On |
 | --- | --- | --- | --- |
-| Yash | Screen recording and capture UX | Role selector, screen-share preview, transcript input, screenshot or recording capture, upload-ready payload | `/api/intake` contract |
-| Luke | Next.js app, InsForge backend, orchestration state | Project scaffold, InsForge schema, API routes, state machine, dashboard data flow | InsForge project credentials |
-| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Session and hypothesis contract |
+| Yash | Slack attachment and recording capture UX | Screenshot/video/recording attachment flow, optional capture page, upload-ready media payload | Slack command, `POST /api/runs`, and `POST /api/runs/{runId}/media` contracts |
+| Luke | Slack webhook/API, InsForge backend, clarification gate, orchestration state | Slack command endpoint, InsForge schema, bug brief confirmation, state machine, Slack thread updates | InsForge and Slack credentials |
+| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Confirmed bug brief and hypothesis contract |
 
 ### 12.2 Workstream Contracts
 
@@ -713,12 +1087,24 @@ Yash to Luke:
 
 ```json
 {
-  "source": "web",
+  "source": "slack",
   "role": "sales",
   "repoUrl": "https://github.com/yxshrk/electron",
   "transcript": "Customer says export hangs on large reports.",
-  "screenshotBase64": "...",
-  "recordingUrl": null
+  "mediaArtifacts": [
+    {
+      "kind": "video",
+      "storageUrl": "insforge://reflex-evidence/run_export_hang_01/export-crash.mov",
+      "summary": "Export clicked, spinner appears, frontend crashes."
+    },
+    {
+      "kind": "screenshot",
+      "storageUrl": "insforge://reflex-evidence/run_export_hang_01/stuck-export.png",
+      "summary": "Report export screen stuck in loading state."
+    }
+  ],
+  "slackChannelId": "C123",
+  "slackThreadTs": "1710000000.000100"
 }
 ```
 
@@ -726,9 +1112,21 @@ Luke to Laurence:
 
 ```json
 {
-  "sessionId": "sess_123",
+  "runId": "run_export_hang_01",
   "repoUrl": "https://github.com/yxshrk/electron",
   "role": "sales",
+  "bugBrief": {
+    "id": "brief_run_export_hang_01",
+    "whereItHappens": "Report export screen",
+    "actualBehavior": "When the user exports a large report, the frontend hangs or crashes.",
+    "expectedBehavior": "The report export should complete or show progress without crashing.",
+    "affectedSurface": "frontend",
+    "evidenceSummary": [
+      "Video shows export click, loading spinner, and frontend crash.",
+      "Screenshot shows report export stuck in loading state."
+    ],
+    "agentPromptPreview": "Investigate the report export flow. The user reports that exporting a large report from the frontend hangs or crashes. Confirm whether the frontend export handler blocks, crashes, or waits on an unbounded backend response before changing code."
+  },
   "symptom": "Report export hangs on large datasets",
   "hypotheses": [
     {
@@ -745,7 +1143,7 @@ Laurence to Luke:
 
 ```json
 {
-  "sessionId": "sess_123",
+  "runId": "run_export_hang_01",
   "hypothesisId": "hyp_1",
   "status": "shipped",
   "rootCause": "Report export loads all rows synchronously before writing the file.",
@@ -758,48 +1156,52 @@ Laurence to Luke:
 
 ### 12.3 Shared State Machine
 
-Every pipeline stage should be stored on `capture_sessions.status` and mirrored in the UI.
+Every pipeline stage should be stored on `reflex_runs.status` and mirrored in Slack.
 
 ```text
-created -> observed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
+created -> observed -> clarifying -> brief_drafted -> confirmed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
 ```
 
 Failure states:
 
 ```text
+clarification_failed
 diagnosis_failed
 dispatch_failed
 reproduction_failed
 pr_failed
 ```
 
-The UI should never infer progress locally. It should render the latest status from InsForge so refreshes and teammate actions stay consistent.
+Slack should never infer progress locally. Each thread update should come from the latest status stored in InsForge so retries, refreshes, and teammate actions stay consistent.
 
 ### 12.4 Build Order for Three People
 
-1. Luke creates the Next.js app, InsForge connection, schema, and `/api/intake`.
-2. Yash builds the capture UI against a mocked `/api/intake` response, then switches to Luke's real endpoint.
+1. Luke creates the Slack app endpoint, InsForge connection, schema, and `POST /api/runs`.
+2. Yash validates the screenshot or recording attachment flow in Slack, then adds an optional capture page only if time allows.
 3. Laurence creates the seeded bug path and a local script or API utility that can produce a PR from a known fix.
-4. Luke adds `/api/diagnose` with deterministic JSON for the rehearsed transcript.
-5. Luke and Laurence connect `/api/dispatch` to the reproduction/fix/PR path.
-6. Yash connects the live UI timeline to InsForge polling or Realtime.
-7. Everyone rehearses the same script three times and removes any live dependency that flakes.
+4. Luke adds `POST /api/runs/{runId}/draft-bug-brief`, `POST /api/slack/interactions`, and `POST /api/runs/{runId}/confirm-bug-brief`.
+5. Luke adds `POST /api/runs/{runId}/diagnose` from the confirmed bug brief.
+6. Luke and Laurence connect `POST /api/runs/{runId}/dispatch-replicas` to the reproduction/fix/PR path.
+7. Luke posts run status updates back to the Slack thread.
+8. Everyone rehearses the same script three times and removes any live dependency that flakes.
 
 ### 12.5 Demo Ownership
 
 | Demo Moment | Owner | Fallback |
 | --- | --- | --- |
-| Role selection and screen capture | Yash | Use transcript input and static screenshot |
-| Session creation and persistence | Luke | Use seeded session row in InsForge |
-| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis for the demo transcript |
+| Slack command and attachment | Yash / Luke | Use a static Slack message and screenshot URL |
+| Run creation and persistence | Luke | Use seeded run row in InsForge |
+| Bug brief confirmation | Luke | Use a prefilled brief and click Confirm |
+| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis from the confirmed brief |
 | Reproduction and fix evidence | Laurence | Use precomputed logs and seeded patch |
 | GitHub PR output | Laurence | Use an already-open demo PR link |
-| Final pipeline walkthrough | Luke | Walk through stored InsForge session states |
+| Final pipeline walkthrough | Luke | Walk through Slack thread updates and stored InsForge run states |
 
 ### 12.6 Missing Decisions
 
 - Which exact repository contains the seeded demo bug?
-- Is the primary demo input a screen recording, a screenshot, or both?
+- Is the primary demo input a Slack screenshot attachment, a recording attachment, or both?
+- Which fields are mandatory in the bug brief before diagnosis: actual behavior, expected behavior, affected surface, and location?
 - Which model path generates the diagnosis JSON: InsForge Model Gateway or a direct model API?
 - What GitHub token can create branches and PRs for the demo repo?
 - What InsForge project is linked, and who owns the project credentials?
@@ -808,10 +1210,11 @@ The UI should never infer progress locally. It should render the latest status f
 
 ### 12.7 Definition of Done
 
-The MVP is done when the team can start from the Web UI and reach a real or pre-authorized PR link with these artifacts persisted in InsForge:
+The MVP is done when the team can start from a Slack command and reach a real or pre-authorized PR link with these artifacts persisted in InsForge:
 
-- Original role-tagged report.
+- Original role-tagged Slack report.
 - Screenshot or recording reference.
+- Confirmed bug brief.
 - Structured symptom.
 - At least one hypothesis.
 - Reproduction evidence.
@@ -822,13 +1225,15 @@ The MVP is done when the team can start from the Web UI and reach a real or pre-
 
 Build:
 
-- Next.js Web UI and API routes.
-- InsForge-backed session and run persistence.
+- Slack slash command and thread updates.
+- Minimal webhook/API routes.
+- InsForge-backed run persistence.
+- Bug brief drafting and Slack confirmation.
 - Structured symptom to hypothesis tree for the rehearsed report.
 - One deterministic reproduction path against a seeded repo.
 - Minimal code fix or seeded patch.
 - Pull request creation.
-- Pipeline status UI.
+- Pipeline status in Slack.
 
 Fake:
 
@@ -837,28 +1242,32 @@ Fake:
 - Pre-warmed sandbox startup where needed.
 - Pre-indexed repository context.
 - Parallel agent fan-out if programmatic access is slow.
+- Optional Vercel status page if the Slack thread already tells the full story.
 
 Name:
 
 - Always-on continuous watching.
 - Enterprise multi-tenant controls.
 - Full diagnostic memory improvement loop.
+- Complete Vercel frontend dashboard.
 - Mobile reproduction path through Limrun.
-- Deep Slack workflow automation.
+- Deep Slack workflow automation beyond the `/reflex` command.
 
 ## 14. Verification Strategy
 
 ### Functional Tests
 
 - Diagnosis contract validates required fields.
+- Bug brief contract validates `where_it_happens`, `actual_behavior`, `affected_surface`, and confirmation status.
 - Role lens changes generated agent brief.
 - Hypotheses include reproduction plans.
 - Agent run state transitions from pending to running to reproduced or rejected.
-- PR metadata stores source session and evidence.
+- PR metadata stores source run and evidence.
 
 ### Integration Tests
 
-- Given a sales transcript and report screenshot, diagnosis produces the expected symptom.
+- Given a Slack sales transcript and screenshot/video evidence reference, diagnosis produces the expected symptom.
+- Given a vague Slack report, Reflex drafts a bug brief and waits for confirmation before diagnosis.
 - Given a structured export-hang symptom, the orchestrator dispatches expected sandbox tasks.
 - Given a seeded large dataset, the reproduction command fails before the fix and passes after the fix.
 - Given a successful fix, a PR record is created with verification notes.
@@ -867,25 +1276,26 @@ Name:
 
 The demo is ready when the team can run this script three times in a row:
 
-1. Start from the capture UI.
-2. Submit the sales-role report export complaint.
-3. Watch diagnosis and hypothesis fan-out appear.
-4. Confirm at least one sandbox reproduces the bug.
-5. Confirm the fix is generated.
-6. Open the PR and show the evidence.
+1. Start from the Slack `/reflex` command.
+2. Submit the sales-role report export complaint with optional screenshot/video evidence.
+3. Confirm or edit the drafted bug brief in Slack.
+4. Watch diagnosis and hypothesis updates appear in the Slack thread.
+5. Confirm at least one sandbox reproduces the bug.
+6. Confirm the fix is generated.
+7. Open the PR and show the evidence.
 
 ## 15. Security and Privacy
 
 The hackathon implementation is not production-ready for sensitive screen data, but it should still follow basic safety rules:
 
-- Store only the screenshots needed for the demo.
+- Store only the screenshots/videos needed for the demo.
 - Avoid capturing the entire desktop when a browser tab is enough.
 - Redact obvious secrets from transcript text.
 - Use scoped GitHub tokens for the demo repository only.
-- Keep sandbox credentials separate from user-facing session data.
-- Link PRs to evidence without exposing unnecessary screenshots publicly.
+- Keep sandbox credentials separate from user-facing run data.
+- Link PRs to evidence without exposing unnecessary screenshots/videos publicly.
 
-Production requirements would include screenshot redaction, data retention controls, organization-level access control, audit logs, and explicit consent UX.
+Production requirements would include screenshot/video redaction, data retention controls, organization-level access control, audit logs, and explicit consent UX.
 
 ## 16. Technical Risks
 
@@ -893,19 +1303,23 @@ Production requirements would include screenshot redaction, data retention contr
 | --- | --- | --- |
 | Replicas programmatic dispatch is unavailable | Cannot automate parallel sandbox fan-out | Use manual or webhook-triggered task dispatch; keep one real sandbox path |
 | Devin API access is unavailable | Cannot show second-agent handoff | Keep Devin as roadmap or manually queued executor |
-| Multimodal extraction is unreliable | Diagnosis may drift | Use rehearsed inputs and structured transcript fallback |
+| Slack command parsing is brittle | Intake fails during demo | Support one rehearsed command shape and validate missing fields clearly |
+| Clarification prompt is too verbose | User ignores confirmation or agent prompt bloats | Keep the bug brief to five fields plus one compact agent prompt preview |
+| Multimodal extraction is unreliable | Diagnosis may drift | Use Slack text as the source of truth and attachments as supporting evidence |
 | Sandbox startup is slow | Demo stalls | Pre-warm or show precomputed run if network fails |
 | Agent fixes wrong code | Demo loses credibility | Use seeded bugs with deterministic tests |
 | InsForge project is not linked before demo | Backend calls fail | Run `npx @insforge/cli current` during setup and keep a fallback project ready |
-| Sponsor APIs differ from assumptions | Integration delays | Keep Devin, Slack, and Limrun outside the core dependency path; keep a scripted fallback if Replicas dispatch is unavailable |
+| Sponsor APIs differ from assumptions | Integration delays | Keep the complete Vercel dashboard, Devin, and Limrun outside the core dependency path; keep a scripted fallback if Replicas dispatch is unavailable |
 
 ## 17. Open Questions to Verify
 
 - Does Replicas expose a programmatic API for dispatching agent tasks, or only integrations through Slack, Linear, GitHub, and similar tools?
 - What is the fastest reliable way to pass a confirmed fix task into Devin during the hackathon?
-- Which model path should handle screen and voice extraction while preserving sponsor alignment?
-- Which InsForge project should be linked for the demo, and what service credentials should the Next.js API routes use?
+- Which model path should generate diagnosis JSON while preserving sponsor alignment?
+- Which InsForge project should be linked for the demo, and what service credentials should the webhook/API layer use?
+- Which Slack workspace and bot credentials should receive the `/reflex` command?
 - Do we want a mobile stretch demo, or should Limrun remain a roadmap extension only?
+- Do we want a Vercel `/run/:id` status page, or should Vercel remain a roadmap extension only?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
 
 ## 18. Hackathon Demo Script
@@ -916,25 +1330,32 @@ Opening:
 
 Demo:
 
-1. Select `Sales / CSM`.
-2. Share a screen showing the report export spinner.
-3. Say: "Every time the customer pulls the big export, it just hangs."
-4. Show the structured symptom.
-5. Show three hypotheses lighting up.
-6. Show the top hypothesis dispatched to Replicas.
-7. Show the sandbox reproducing the hang.
-8. Show the code fix and passing test.
-9. Open the PR linked to the source report.
+1. Run `/reflex role:sales repo:https://github.com/yxshrk/electron Customer says export hangs on large reports.`
+2. Attach or reference a screenshot/recording of the stuck export screen if available.
+3. Show the Slack thread reply: run started.
+4. Show the drafted bug brief:
+   - Where: report export screen.
+   - Actual: exporting a large report hangs or crashes the frontend.
+   - Expected: export completes or shows progress.
+   - Surface: frontend.
+5. Click Confirm in Slack.
+6. Show the structured symptom: "Report export hangs on large datasets."
+7. Show three hypotheses in the Slack thread.
+8. Show the top hypothesis dispatched to Replicas.
+9. Show the sandbox reproducing the hang.
+10. Show the fix summary and passing verification.
+11. Open the PR linked in the Slack thread.
 
 Closer:
 
-Switch the role to `CEO / Founder` on the same screen and say: "Reporting feels slow." Reflex should produce a broader diagnosis with performance and workflow hypotheses instead of a narrow customer bug report. This proves the role tag changes the engineering lens.
+Run the same Slack command with `role:ceo` and the text "Reporting feels slow." Reflex should produce a broader diagnosis with performance and workflow hypotheses instead of a narrow customer bug report. This proves the role tag changes the engineering lens.
 
 ## 19. Success Criteria
 
 The hackathon project is successful if judges see:
 
-- A real source-of-truth screen and voice report.
+- A real source-of-truth Slack report with optional screen evidence.
+- A confirmed bug brief before diagnosis begins.
 - A clear role-aware translation into engineering language.
 - A ranked hypothesis tree.
 - Parallel or sandboxed agent investigation.
@@ -944,7 +1365,7 @@ The hackathon project is successful if judges see:
 The minimum winning spine is:
 
 ```text
-structured symptom -> sandbox reproduction -> fix -> green PR
+confirmed bug brief -> structured symptom -> sandbox reproduction -> fix -> green PR
 ```
 
 Everything before that spine can be scripted. Everything after that spine can be roadmap.
