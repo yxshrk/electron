@@ -1,13 +1,19 @@
 {
-  "name": "reflex",
-  "version": "0.1.0",
+  "name": "reflex-demo",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test:slack": "tsx scripts/test-slack.ts"
+    "test:slack": "tsx scripts/test-slack.ts",
+    "test": "tsx --test tests/*.spec.ts",
+    "test:export-large:repro": "tsx scripts/reproduce-export-hang.ts",
+    "test:export-large:fixed": "tsx scripts/verify-export-fix.ts",
+    "reflex:prompt": "tsx agent/run.ts prompt agent/examples/dispatch-input.json",
+    "reflex:scripted-fallback": "tsx agent/run.ts scripted-fallback agent/examples/dispatch-input.json",
+    "reflex:scripted-fallback:create": "tsx agent/run.ts scripted-fallback agent/examples/dispatch-input.json --create-pr"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -15,10 +21,10 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@types/node": "20.14.10",
+    "@types/node": "^20.14.10",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
-    "tsx": "^4.19.2",
-    "typescript": "5.5.4"
+    "tsx": "^4.20.4",
+    "typescript": "^5.5.4"
   }
 }
