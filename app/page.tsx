@@ -10,12 +10,24 @@ const ROLES = [
   { value: "engineer", label: "Engineer" },
 ];
 
+/**
+ * Renders the demo entry page for starting a browser-based debug run.
+ *
+ * @returns Interactive page that creates a debug run and opens the recorder route.
+ * @sideEffects Creates a Reflex run through `/api/runs` when the user starts recording.
+ */
 export default function Home() {
   const router = useRouter();
   const [role, setRole] = useState("sales_csm");
   const [repoUrl, setRepoUrl] = useState("https://github.com/yxshrk/electron");
   const [starting, setStarting] = useState(false);
 
+  /**
+   * Creates a debug-mode Reflex run and navigates to its recorder.
+   *
+   * @returns Nothing after navigation is scheduled.
+   * @sideEffects Sends a POST request to `/api/runs` and updates client navigation state.
+   */
   async function startDebugRun() {
     setStarting(true);
     try {
@@ -42,9 +54,9 @@ export default function Home() {
       <div className="panel">
         <h2>Start a live debug run</h2>
         <p className="muted">
-          Debug mode is the screen-recording entry point — a sibling to Slack bug mode. It feeds the
+          Debug mode is the screen-recording entry point - a sibling to Slack bug mode. It feeds the
           same backend (<code>/api/runs/&#123;runId&#125;/debug-capture</code>) and converges into the
-          same diagnose → dispatch pipeline.
+          same diagnose to dispatch pipeline.
         </p>
 
         <label htmlFor="role">Your role</label>
@@ -59,7 +71,7 @@ export default function Home() {
 
         <div className="row" style={{ marginTop: 16 }}>
           <button onClick={startDebugRun} disabled={starting}>
-            {starting ? "Starting…" : "Open recorder →"}
+            {starting ? "Starting..." : "Open recorder"}
           </button>
           <a className="link" href="/dashboard">View runs</a>
         </div>
