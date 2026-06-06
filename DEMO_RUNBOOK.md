@@ -280,9 +280,10 @@ The implementation should expose these routes before the demo script is rehearse
 | `POST /api/runs/{runId}/media` | Store artifact metadata after upload to InsForge Storage |
 | `POST /api/runs/{runId}/debug-capture` | Store recording, transcript, screenshot, and note artifacts |
 | `POST /api/runs/{runId}/draft-bug-brief` | Generate confirmable bug report from stored context |
-| `POST /api/runs/{runId}/confirm-bug-brief` | Confirm or update the bug brief and create the intake package |
+| `POST /api/runs/{runId}/confirm-bug-brief` | Confirm or update the bug brief, create the intake package, diagnose, and auto-dispatch |
 | `POST /api/runs/{runId}/intake-package` | Return the confirmed source-of-truth package |
 | `POST /api/runs/{runId}/diagnose` | Generate symptom and hypotheses from confirmed package only |
+| `POST /api/runs/{runId}/dispatch` | Select the top hypothesis and forward it to Replicas/scripted fallback |
 | `POST /api/runs/{runId}/dispatch-replicas` | Start Replicas or scripted fallback for one selected hypothesis |
 | `POST /api/replicas/callback` | Store agent evidence, PR metadata, and Slack/dashboard status |
 | `GET /api/runs` | Return shallow run list for `/dashboard` |
@@ -329,7 +330,8 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/draft-bug-brief" \
   }'
 ```
 
-Confirm report:
+Confirm report. In the default demo config, this also diagnoses the report, dispatches the top
+hypothesis, writes `agent_runs` / `pull_requests`, and advances the Slack timeline to PR opened.
 
 ```bash
 curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/confirm-bug-brief" \
@@ -342,7 +344,7 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/confirm-bug-brief" \
   }'
 ```
 
-Diagnose:
+Manual diagnose retry:
 
 ```bash
 curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/diagnose" \
@@ -350,15 +352,14 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/diagnose" \
   -d '{ "intakePackageId": "pkg_run_export_hang_01" }'
 ```
 
-Dispatch scripted fallback:
+Manual top-hypothesis dispatch retry:
 
 ```bash
-curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/dispatch-replicas" \
+curl -X POST "$NEXT_PUBLIC_APP_URL/api/runs/$RUN_ID/dispatch" \
   -H "Content-Type: application/json" \
   -d '{
-    "hypothesisId": "hyp_1_unbounded_export_query",
-    "taskName": "replicas_run_export_hang_01_reproduce_export_hang",
-    "taskTitle": "[Reflex] Report export hangs on large datasets - Unbounded report query"
+    "provider": "scripted",
+    "createPr": true
   }'
 ```
 

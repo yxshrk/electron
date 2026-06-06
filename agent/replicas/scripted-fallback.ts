@@ -120,17 +120,20 @@ function buildScriptedEvidence(input: DispatchInput, status: EvidencePayload['st
 }
 
 /**
- * Ensures the scripted fallback starts from a clean git worktree.
+ * Ensures the scripted fallback starts without tracked git changes.
  *
  * @param repoRoot Repository root to inspect.
  * @returns Nothing.
- * @sideEffects Reads git status.
+ * @sideEffects Reads git status while ignoring untracked local files.
  */
 function assertCleanWorktree(repoRoot: string): void {
-  const status = execFileSync('git', ['status', '--porcelain'], { cwd: repoRoot, encoding: 'utf8' });
+  const status = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
+    cwd: repoRoot,
+    encoding: 'utf8'
+  });
 
   if (status.trim()) {
-    throw new Error('Scripted fallback requires a clean worktree before it creates a fix branch.');
+    throw new Error('Scripted fallback requires no tracked worktree changes before it creates a fix branch.');
   }
 }
 

@@ -1,6 +1,6 @@
 // POST /api/slack/reflex-record — user is actively reproducing (shared-contracts §3).
 // Slack can't capture screen/mic → return an Open Recorder link to Yash's browser recorder
-// (/debug/{runId}). The recorder owns capture → draft → Confirm & diagnose IN THE PAGE; Slack's
+// (/debug/{runId}). The recorder owns capture → draft; Slack confirm starts diagnose + dispatch.
 // job here is just to mirror the run status into the thread (Yash PR #8 wiring note).
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
@@ -48,8 +48,8 @@ async function run(channelId: string): Promise<void> {
 
   const root = await postMessage({ channel: channelId, text: 'Open the Reflex recorder', blocks: recorderBlocks(runId, recorderUrl) });
 
-  // Mirror the recorder-driven pipeline into the thread. The recorder page owns capture → draft →
-  // Confirm & diagnose; here we just render status from Yash's /events (SSE). Yash persists our
+  // Mirror the recorder-driven pipeline into the thread. The recorder page owns capture → draft;
+  // Slack confirm starts diagnose + dispatch. Here we just render status from Yash's /events (SSE). Yash persists our
   // channel/thread, so a deploy could also push these — for now we subscribe in-process.
   let timelineTs: string | undefined;
   const unsub = subscribe(runId, async (ev) => {

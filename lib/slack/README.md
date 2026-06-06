@@ -20,9 +20,9 @@ Routes: `app/api/slack/{reflex-report,reflex-record,events,interactions}/route.t
 ```
 /reflex-report  → createRun(mode:bug) → gather channel context → POST /context
                 → draft-bug-brief → REPORT CARD in Slack (Confirm / Edit Report / Add Attachment)
-                → confirm-bug-brief → subscribe /events → status thread animates → PR card
+                → confirm-bug-brief → diagnose → dispatch top hypothesis → status thread animates → PR card
 /reflex-record  → createRun(mode:debug) → "Open Recorder" link to /debug/{runId}
-                → [Yash's recorder page owns capture → draft → Confirm & diagnose IN-BROWSER]
+                → [browser recorder owns capture → draft; Slack Confirm starts diagnose + dispatch]
                 → subscribe /events → status thread mirrors progress → PR card
 ```
 IDs: `runId`. Status: created→context_stored→clarifying→report_drafted→package_confirmed→diagnosed→dispatched→reproduced→fixed→shipped.
