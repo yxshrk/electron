@@ -122,9 +122,18 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   let dispatch: unknown = null;
   try {
     const dg = await fetch(`${origin}/api/runs/${runId}/diagnose`, { method: "POST" });
-    if (dg.ok) diagnosis = await dg.json();
-  } catch {
-    /* diagnosis can be retried via POST /diagnose */
+    if (!dg.ok) {
+      throw new Error(await responseErrorDetail(dg));
+    }
+    diagnosis = await dg.json();
+  } catch (error) {
+    await setStatus(runId, "diagnosis_failed", {
+      eventType: "diagnosis.failed",
+      title: "Diagnosis failed",
+      detail: safeErrorDetail(error),
+      payload: { intakePackageId: pkg.id, bugBriefId: brief.id },
+      actor: "orchestrator",
+    });
   }
 
   if (diagnosis && shouldAutoDispatch()) {
@@ -159,8 +168,18 @@ async function autoDispatchRun(origin: string, runId: string): Promise<unknown> 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(autoDispatchBody()),
     });
-    return await res.json().catch(() => ({ status: res.status }));
+    const result = await res.json().catch(() => ({ status: res.status }));
+    if (!res.ok) {
+      throw new Error(typeof result?.error === "string" ? result.error : `dispatch returned ${res.status}`);
+    }
+    return result;
   } catch (error) {
+    await setStatus(runId, "dispatch_failed", {
+      eventType: "dispatch.failed",
+      title: "Dispatch failed",
+      detail: safeErrorDetail(error),
+      actor: "orchestrator",
+    });
     return { status: "dispatch_request_failed", error: String(error) };
   }
 }
@@ -186,4 +205,30 @@ function autoDispatchBody(): AutoDispatchBody {
  */
 function parseAutoDispatchProvider(value: string | undefined): AutoDispatchProvider | undefined {
   return value === "replicas" || value === "scripted" ? value : undefined;
+}
+
+/**
+ * Reads a compact error body from an internal route response.
+ *
+ * @param res Failed fetch response.
+ * @returns Safe, short failure detail for timeline events.
+ * @sideEffects Reads the response body once.
+ */
+async function responseErrorDetail(res: Response): Promise<string> {
+  const text = await res.text().catch(() => "");
+  return `${res.status} ${text}`.slice(0, 300);
+}
+
+/**
+ * Converts unknown errors into a secret-redacted timeline detail.
+ *
+ * @param error Caught error value.
+ * @returns Redacted failure detail suitable for `run_events.detail`.
+ * @sideEffects None.
+ */
+function safeErrorDetail(error: unknown): string {
+  return String(error)
+    .replace(/\b(?:xox[baprs]-|uak_)[A-Za-z0-9-]+/g, "[redacted]")
+    .replace(/\b([A-Z0-9_]*(?:TOKEN|SECRET|API_KEY|ACCESS_KEY|PRIVATE_KEY))\s*=\s*\S+/gi, "$1=[redacted]")
+    .slice(0, 300);
 }

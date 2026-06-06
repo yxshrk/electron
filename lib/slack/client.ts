@@ -55,6 +55,9 @@ export async function fileInfo(file: string): Promise<{ url_private_download: st
 export interface SlackMessage {
   ts: string;
   user?: string;
+  bot_id?: string;
+  app_id?: string;
+  subtype?: string;
   text?: string;
   files?: Array<{ id: string; name: string; mimetype: string; url_private?: string }>;
 }
