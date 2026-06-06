@@ -1841,6 +1841,44 @@ Success criterion:
 
 - Polish improves the demo without becoming a dependency for the core flow.
 
+### End-to-End Readiness Checklist
+
+This checklist tracks what must exist before the demo can run from Slack to PR. Treat P0 as required
+for the hackathon spine and P1 as useful only after the spine is reliable.
+
+P0 required:
+
+- Seeded bug in `https://github.com/yxshrk/electron`: export-hang bug, seeded large dataset, failing repro command or test, known minimal fix, verification command, scripted fallback PR path.
+- InsForge setup: migration applied, `reflex-evidence` storage bucket created, `INSFORGE_PROJECT_URL` and `INSFORGE_SERVICE_KEY` configured.
+- Slack app: `/reflex-bug-mode`, `/reflex-debug-mode`, Confirm/Edit/Add Attachment interactions, bot token, signing secret, latest 100 message fetch, latest 3 attachment fetch.
+- Core API routes: `POST /api/runs`, context/media/debug capture ingest, draft bug brief, confirm bug brief, intake package, diagnose, dispatch Replicas or scripted fallback, Replicas callback.
+- Prompt templates in code: bug report draft prompt, diagnosis prompt, Replicas agent prompt, PR body template.
+- Dashboard: `/dashboard`, `/dashboard/{runId}`, `GET /api/runs`, `GET /api/runs/{runId}`, run timeline from `run_events`, chat history, attachments, diagnosis, hypotheses, agent evidence, PR link.
+- Rehearsal: run `/reflex-bug-mode` to PR at least three times with the seeded export-hang bug.
+
+P1 optional:
+
+- Live `/reflex-debug-mode` recorder with screen and microphone capture.
+- Real Replicas dispatch after the scripted fallback works.
+- Vercel deployment for webhook/API/dashboard.
+- Polished dashboard UI.
+- InsForge Realtime or SSE instead of polling.
+- Parallel hypothesis fan-out.
+
+Fastest implementation order:
+
+```text
+seeded bug + scripted fallback PR
+-> InsForge schema/storage
+-> /api/runs + run_events
+-> /reflex-bug-mode
+-> draft/confirm report
+-> deterministic diagnosis fixture
+-> scripted fallback opens PR
+-> dashboard detail page
+-> rehearse 3 times
+```
+
 ### MVP Environment Variables
 
 ```text
