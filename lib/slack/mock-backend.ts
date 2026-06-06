@@ -3,7 +3,7 @@
 
 import type {
   ConfirmInput, MediaArtifactInput, ReportDraft, RunCreateInput, RunCreateResponse,
-  RunEvent, SlackAttachment, SlackContextCandidate,
+  RunEvent, SlackContextCandidate,
 } from './contracts';
 
 interface MockRun {
@@ -44,9 +44,9 @@ export async function createRun(input: RunCreateInput): Promise<RunCreateRespons
   return { runId: id, status: 'created', recordingUrl };
 }
 
-export async function postContext(runId: string, messages: SlackContextCandidate[], attachments: SlackAttachment[]): Promise<{ ok: true }> {
+export async function postContext(runId: string, messages: SlackContextCandidate[]): Promise<{ ok: true }> {
   const r = runs.get(runId);
-  if (r) { r.contextCount = messages.length; r.mediaCount = attachments.length; }
+  if (r) r.contextCount = messages.length;
   return { ok: true };
 }
 

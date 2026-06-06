@@ -3,7 +3,7 @@
 
 import type {
   ConfirmInput, DraftConfig, MediaArtifactInput, ReportDraft,
-  RunCreateInput, RunCreateResponse, RunEvent, SlackAttachment, SlackContextCandidate,
+  RunCreateInput, RunCreateResponse, RunEvent, SlackContextCandidate,
 } from './contracts';
 import * as mock from './mock-backend';
 
@@ -30,9 +30,9 @@ export function createRun(input: RunCreateInput): Promise<RunCreateResponse> {
   return useMock ? mock.createRun(input) : post('/api/runs', input);
 }
 
-/** Store copied Slack context candidates (§8: { messages, attachments }). */
-export function postContext(runId: string, messages: SlackContextCandidate[], attachments: SlackAttachment[]): Promise<{ ok: true }> {
-  return useMock ? mock.postContext(runId, messages, attachments) : post(`/api/runs/${runId}/context`, { messages, attachments });
+/** Store copied Slack context candidates. Yash's /context takes { messages } only (PR #8). */
+export function postContext(runId: string, messages: SlackContextCandidate[]): Promise<{ ok: true }> {
+  return useMock ? mock.postContext(runId, messages) : post(`/api/runs/${runId}/context`, { messages });
 }
 
 /** Store one media artifact's metadata after upload to Storage (§8: one file per call). */
@@ -50,11 +50,14 @@ export function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promis
   return useMock ? mock.confirmBugBrief(runId, input) : post(`/api/runs/${runId}/confirm-bug-brief`, input);
 }
 
-/** Subscribe to the run event stream. Returns an unsubscribe fn. */
+/** Subscribe to the run event stream. Returns an unsubscribe fn.
+ *  Yash's /events emits SSE named events: `run-event` (+ `done`/`error`) — PR #8. */
 export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => void {
   if (useMock) return mock.subscribe(runId, onEvent);
   const es = new EventSource(`${baseUrl}/api/runs/${runId}/events`);
-  es.onmessage = (m) => onEvent(JSON.parse(m.data));
+  es.addEventListener('run-event', (m) => onEvent(JSON.parse((m as MessageEvent).data)));
+  es.addEventListener('done', () => es.close());
+  es.addEventListener('error', () => es.close());
   return () => es.close();
 }
 

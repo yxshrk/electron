@@ -53,7 +53,8 @@ async function run(channelId: string, commandText: string): Promise<void> {
     const ctx = await gatherContext(channelId, input.contextWindow);
     msgCount = ctx.messages.length;
     fileCount = ctx.attachments.length;
-    await postContext(runId, ctx.messages, ctx.attachments);
+    await postContext(runId, ctx.messages);
+    // attachments need upload to Storage before /media (storageUrl required) — TODO, see events route
   } catch { /* mock or missing scopes — proceed with the draft */ }
 
   // Draft + post the confirmable report into the thread.

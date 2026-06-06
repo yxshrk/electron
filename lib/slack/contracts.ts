@@ -33,30 +33,35 @@ export interface RunCreateResponse {
   recordingUrl?: string;
 }
 
-// POST /api/runs/{runId}/context — field names per TECHNICAL_DOCUMENT.md §8.
+export type MediaKind =
+  | 'screenshot' | 'video' | 'screen_recording' | 'audio_recording' | 'transcript' | 'log' | 'other';
+
+// POST /api/runs/{runId}/context — matches Yash's route (PR #8): { messages: SlackMessage[] }.
+// NOTE: his handler reads `ts`/`userId` (not slackMessageTs/slackUserId — the §8 doc is wrong).
 export interface SlackContextCandidate {
-  slackMessageTs: string;
-  slackUserId?: string;
+  ts: string;
+  userId?: string;
   text: string;
   permalink?: string;
   hasFiles?: boolean;
 }
 
+// Gathered for the context line + future /media upload — NOT sent to /context (his route ignores it).
 export interface SlackAttachment {
   slackFileId: string;
   slackMessageTs: string;
-  kind: 'screenshot' | 'video' | 'recording' | 'file';
+  kind: MediaKind;
   filename: string;
 }
 
-/** POST /api/runs/{runId}/media — one file per call (TECHNICAL_DOCUMENT.md §8). */
+/** POST /api/runs/{runId}/media — one file per call; storageUrl REQUIRED (PR #8). */
 export interface MediaArtifactInput {
-  kind: 'screenshot' | 'video' | 'recording' | 'log' | 'file';
-  source: 'slack_file' | 'recorder' | 'manual';
-  storageUrl?: string;
+  kind: MediaKind;
+  storageUrl: string;
   slackFileId?: string;
+  slackMessageTs?: string;
+  thumbnailUrl?: string;
   summary?: string;
-  safeToShare?: boolean;
 }
 
 /** POST /api/runs/{runId}/draft-bug-brief request body (§8). */

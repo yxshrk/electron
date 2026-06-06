@@ -1,11 +1,12 @@
 // POST /api/slack/reflex-record — user is actively reproducing (shared-contracts §3).
-// Slack can't capture screen/mic, so we return an Open Recorder link to the browser recorder;
-// after capture, Yash stores the debug artifacts and drafts the same report (same confirm flow).
+// Slack can't capture screen/mic → return an Open Recorder link to Yash's browser recorder
+// (/debug/{runId}). The recorder owns capture → draft → Confirm & diagnose IN THE PAGE; Slack's
+// job here is just to mirror the run status into the thread (Yash PR #8 wiring note).
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { recorderBlocks } from '../../../../lib/slack/blocks';
-import { postMessage } from '../../../../lib/slack/client';
-import { createRun } from '../../../../lib/slack/backend';
+import { recorderBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
+import { postMessage, updateMessage } from '../../../../lib/slack/client';
+import { createRun, subscribe } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -42,9 +43,26 @@ async function run(channelId: string): Promise<void> {
 
   const { runId, recordingUrl } = await createRun(input);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? '';
+  // Use the recordingUrl Yash returns; falls back to our origin (⚠️ localhost until deployed).
   const recorderUrl = recordingUrl ?? `${appUrl}/debug/${runId}`;
 
-  await postMessage({ channel: channelId, text: 'Open the Reflex recorder', blocks: recorderBlocks(runId, recorderUrl) });
-  // After the browser recorder finishes, Yash stores the capture and drafts the report; the
-  // confirm flow + status thread are then identical to report (handled via /events + interactions).
+  const root = await postMessage({ channel: channelId, text: 'Open the Reflex recorder', blocks: recorderBlocks(runId, recorderUrl) });
+
+  // Mirror the recorder-driven pipeline into the thread. The recorder page owns capture → draft →
+  // Confirm & diagnose; here we just render status from Yash's /events (SSE). Yash persists our
+  // channel/thread, so a deploy could also push these — for now we subscribe in-process.
+  let timelineTs: string | undefined;
+  const unsub = subscribe(runId, async (ev) => {
+    if (!timelineTs) {
+      const m = await postMessage({ channel: root.channel, thread_ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
+      timelineTs = m.ts;
+    } else {
+      await updateMessage({ channel: root.channel, ts: timelineTs, text: ev.title, blocks: blocksForEvent(ev) });
+    }
+    if (ev.status === 'shipped') {
+      const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
+      if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
+      unsub();
+    }
+  });
 }

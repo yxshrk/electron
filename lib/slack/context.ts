@@ -13,8 +13,8 @@ export interface GatheredContext {
 function classifyKind(mimetype: string): SlackAttachment['kind'] {
   if (mimetype.startsWith('image/')) return 'screenshot';
   if (mimetype.startsWith('video/')) return 'video';
-  if (mimetype.startsWith('audio/')) return 'recording';
-  return 'file';
+  if (mimetype.startsWith('audio/')) return 'audio_recording';
+  return 'other';
 }
 
 /**
@@ -35,8 +35,8 @@ export async function gatherContext(
     if (budget - text.length < 0) break; // keep newest-first within the char budget
     budget -= text.length;
     messages.push({
-      slackMessageTs: m.ts,
-      slackUserId: m.user,
+      ts: m.ts,
+      userId: m.user,
       text,
       hasFiles: (m.files?.length ?? 0) > 0,
     });
