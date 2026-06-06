@@ -1,39 +1,56 @@
-// Read-only run list. No mutation buttons (confirmation/dispatch live in the recorder/Slack/backend).
-import { dbSelect } from "@/lib/insforge/db";
-import type { ReflexRunRow } from "@/lib/insforge/types";
+import { getDashboardRuns } from '@/lib/dashboard/read-model';
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
+/**
+ * Renders the top-level Reflex dashboard run list.
+ *
+ * @returns Server-rendered table of Reflex runs with source metadata.
+ * @sideEffects Reads from InsForge when backend credentials are configured.
+ */
 export default async function Dashboard() {
-  let runs: ReflexRunRow[] = [];
-  let error: string | null = null;
-  try {
-    runs = await dbSelect<ReflexRunRow>("reflex_runs", "order=created_at.desc&limit=100");
-  } catch (e) {
-    error = String(e);
-  }
+  const { runs, source, error } = await getDashboardRuns();
 
   return (
     <>
-      <h1>Runs</h1>
-      {error && <div className="panel" style={{ borderColor: "var(--bad)" }}>{error}</div>}
+      <div className="page-title">
+        <div>
+          <h1>Reflex Runs</h1>
+          <p className="muted">Read-only diagnosis and evidence overview.</p>
+        </div>
+        <span className={`pill ${source === 'insforge' ? 'good' : 'warn'}`}>
+          {source === 'insforge' ? 'InsForge' : 'Demo fixture'}
+        </span>
+      </div>
+      {error && <div className="panel notice">Showing fixture data because InsForge is not connected: {error}</div>}
       <div className="panel">
         {runs.length === 0 ? (
-          <p className="muted">No runs yet. Start one from the <a className="link" href="/">home page</a>.</p>
+          <p className="muted">No runs yet.</p>
         ) : (
           <table>
             <thead>
-              <tr><th>Run</th><th>Mode</th><th>Role</th><th>Status</th><th>Repo</th><th>Created</th></tr>
+              <tr>
+                <th>Run</th>
+                <th>Status</th>
+                <th>Mode</th>
+                <th>Role</th>
+                <th>Summary</th>
+                <th>Evidence</th>
+                <th>PR</th>
+                <th>Created</th>
+              </tr>
             </thead>
             <tbody>
               {runs.map((r) => (
                 <tr key={r.id}>
                   <td><a className="link" href={`/dashboard/${r.id}`}>{r.run_key}</a></td>
+                  <td>{r.status}</td>
                   <td><span className="pill">{r.mode}</span></td>
                   <td>{r.role}</td>
-                  <td>{r.status}</td>
-                  <td className="muted">{r.repo_url.replace("https://github.com/", "")}</td>
+                  <td>{r.summary ?? r.repo_url.replace('https://github.com/', '')}</td>
+                  <td>{r.media_count ?? '-'}</td>
+                  <td>{r.pr_url ? <a className="link" href={r.pr_url}>open</a> : '-'}</td>
                   <td className="muted">{new Date(r.created_at).toLocaleString()}</td>
                 </tr>
               ))}

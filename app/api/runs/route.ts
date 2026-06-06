@@ -1,7 +1,8 @@
 // POST /api/runs   -> create a reflex_runs row (C1)
 // GET  /api/runs   -> list runs (read-only dashboard)
 import { NextRequest, NextResponse } from "next/server";
-import { dbInsert, dbSelect } from "@/lib/insforge/db";
+import { dbInsert } from "@/lib/insforge/db";
+import { getDashboardRuns } from "@/lib/dashboard/read-model";
 import { addEvent } from "@/lib/insforge/status";
 import { shortKey } from "@/lib/ids";
 import type { RunCreateInput, ReflexRunRow, Role, RunMode, RunSource } from "@/lib/insforge/types";
@@ -11,6 +12,13 @@ export const runtime = "nodejs";
 const DEFAULT_REPO = process.env.DEFAULT_GITHUB_REPO ?? "https://github.com/yxshrk/electron";
 const VALID_ROLES: Role[] = ["sales_csm", "ceo", "product", "engineer"];
 
+/**
+ * Creates a Reflex run in InsForge from a Slack or web intake request.
+ *
+ * @param req Incoming request containing a partial run creation payload.
+ * @returns JSON with the created run ID, status, and optional debug recording URL.
+ * @sideEffects Inserts a reflex_runs row and emits the initial run.created event.
+ */
 export async function POST(req: NextRequest) {
   let body: Partial<RunCreateInput>;
   try {
@@ -56,10 +64,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ runId: run.id, status: "created", recordingUrl });
 }
 
+/**
+ * Lists dashboard runs from InsForge, or fixture data when backend setup is absent.
+ *
+ * @returns JSON dashboard run list with source metadata.
+ * @sideEffects Reads from InsForge when credentials are configured.
+ */
 export async function GET() {
-  const runs = await dbSelect<ReflexRunRow>(
-    "reflex_runs",
-    "order=created_at.desc&limit=100"
-  );
-  return NextResponse.json({ runs });
+  return NextResponse.json(await getDashboardRuns());
 }

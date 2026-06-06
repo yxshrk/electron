@@ -1,6 +1,6 @@
 // Shared TypeScript contracts for the Reflex pipeline.
-// Source of truth: developer_plans/shared-contracts.md §4 (contract chain) and the
-// reflex_runs migration. Laurence and Luke import from here — keep these stable.
+// Source of truth: developer_plans/shared-contracts.md section 4 (contract chain) and the
+// reflex_runs migration. Laurence and Luke import from here - keep these stable.
 
 export type RunStatus =
   | "created"
