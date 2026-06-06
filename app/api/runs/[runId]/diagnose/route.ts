@@ -3,7 +3,7 @@
 // DispatchInput payloads Luke's dispatch-replicas route consumes (C4).
 import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, dbSelect, getRun } from "@/lib/insforge/db";
-import { setStatus, addEvent } from "@/lib/insforge/status";
+import { setStatus } from "@/lib/insforge/status";
 import { diagnose } from "@/lib/diagnosis/diagnose";
 import { grepRepo, grepHint } from "@/lib/grounding/grep";
 import type { DispatchInput, Hypothesis, ReflexRunRow } from "@/lib/insforge/types";
@@ -17,7 +17,7 @@ interface IntakePackageRow {
   status: string;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { runId: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
   if (!run) return NextResponse.json({ error: "run not found" }, { status: 404 });
@@ -110,30 +110,9 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     hypothesis: h,
   }));
 
-  // Automatically hand the top hypothesis to Luke's Replicas dispatch — no manual step.
-  // Guarded: if Luke's route isn't deployed yet, we stay at `diagnosed` and report it.
-  const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
-  let dispatched = false;
-  if (dispatch[0]) {
-    try {
-      const res = await fetch(`${origin}/api/runs/${runId}/dispatch-replicas`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(dispatch[0]),
-      });
-      dispatched = res.ok;
-    } catch {
-      dispatched = false;
-    }
-    await addEvent(runId, {
-      eventType: dispatched ? "dispatch.requested" : "dispatch.pending",
-      status: "diagnosed",
-      title: dispatched ? "Handed top hypothesis to Replicas" : "Dispatch pending (Luke's route not available yet)",
-      detail: dispatch[0].hypothesis.title,
-      actor: "orchestrator",
-    });
-  }
-
+  // Diagnosis is returned to Slack (via confirm-bug-brief's response + run_events) so the user can
+  // confirm the symptom + grounded hypotheses there. Dispatch to Luke is a SEPARATE, Slack-confirmed
+  // step (POST /api/runs/{runId}/dispatch) — we do NOT auto-dispatch here.
   return NextResponse.json({
     diagnosisId: diag.id,
     symptom: result.symptom,
@@ -141,6 +120,5 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     hypotheses: result.hypotheses,
     grounding: grounded,
     dispatch,
-    dispatched,
   });
 }
