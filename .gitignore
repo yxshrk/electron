@@ -14,6 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+lib/
 lib64/
 parts/
 sdist/
@@ -232,10 +233,10 @@ __marimo__/
 .trae
 .windsurf
 
-# Node / Next.js
-node_modules/
-.next/
-out/
-next-env.d.ts
+# Next.js / Node (Reflex app)
+/node_modules
+/.next/
+/out/
+/build
 *.tsbuildinfo
-.DS_Store
+next-env.d.ts

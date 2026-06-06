@@ -56,7 +56,7 @@ console.log('\n# block builders');
 }
 
 console.log('\n# mock backend: createRun → draft → confirm → shipped');
-await (async () => {
+void (async () => {
   const { runId, status } = await createRun({
     source: 'slack', mode: 'bug', role: 'sales_csm', repoUrl: 'https://github.com/yxshrk/electron',
     slackChannelId: 'C1', slackThreadTs: null, contextWindow: DEFAULT_CONTEXT_WINDOW,
@@ -80,7 +80,7 @@ await (async () => {
   ok('saw diagnosed', statuses.includes('diagnosed'));
   ok('saw reproduced', statuses.includes('reproduced'));
   ok('ended on shipped with prUrl', seen.at(-1)?.status === 'shipped' && !!(seen.at(-1)?.payload?.prUrl));
-})();
 
-console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} passed, ${fail} failed\n`);
-process.exit(fail === 0 ? 0 : 1);
+  console.log(`\n${fail === 0 ? '✅' : '❌'} ${pass} passed, ${fail} failed\n`);
+  process.exit(fail === 0 ? 0 : 1);
+})();

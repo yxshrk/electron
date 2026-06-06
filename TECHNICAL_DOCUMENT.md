@@ -53,6 +53,10 @@ The fastest credible version is:
 Slack + InsForge + Replicas + GitHub API
 ```
 
+Operational setup and rehearsal details live in [DEMO_RUNBOOK.md](./DEMO_RUNBOOK.md), including
+the seeded bug spec, Slack app setup, InsForge setup, route checklist, idempotency rules, dashboard
+field mapping, and fallback demo steps.
+
 Do not add MySQL or Supabase for the MVP. InsForge Postgres is the database, and InsForge Storage is the artifact store. InsForge already provides the backend layer Reflex needs: Postgres database, authentication, storage, realtime, edge functions, and model gateway support. Using InsForge also strengthens the hackathon story because Reflex becomes an InsForge-powered agentic developer tool instead of a generic Slack bot with a separate database provider.
 
 | Layer | Tool | Responsibility |
@@ -1846,6 +1850,9 @@ Success criterion:
 This checklist tracks what must exist before the demo can run from Slack to PR. Treat P0 as required
 for the hackathon spine and P1 as useful only after the spine is reliable.
 
+Use [DEMO_RUNBOOK.md](./DEMO_RUNBOOK.md) as the operational source of truth for exact setup,
+smoke-test commands, retry/idempotency behavior, dashboard field mapping, and the live demo script.
+
 P0 required:
 
 - Seeded bug in `https://github.com/yxshrk/electron`: export-hang bug, seeded large dataset, failing repro command or test, known minimal fix, verification command, scripted fallback PR path.
@@ -1890,6 +1897,9 @@ SLACK_BOT_TOKEN=
 GITHUB_TOKEN=
 DEFAULT_GITHUB_REPO=https://github.com/yxshrk/electron
 MODEL_API_KEY=
+REPLICAS_API_KEY=
+REPLICAS_ENVIRONMENT_ID=
+REPLICAS_WEBHOOK_SECRET=
 ```
 
 Keep these values out of the browser unless they are explicitly public. Server-side API routes or edge functions should own all privileged Slack, InsForge, GitHub, model, and agent credentials.
