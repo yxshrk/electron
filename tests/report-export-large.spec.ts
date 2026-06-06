@@ -3,13 +3,13 @@ import test from 'node:test';
 import { createLargeReportFixture, expectedCsvLineCount } from '../app/test-fixtures/reports/report-fixture';
 import { exportReportCsv, exportReportCsvBatched } from '../app/test-fixtures/reports/export';
 
-test('default seeded export path reproduces the large report failure', () => {
+test('default export path handles the large report fixture without throwing', () => {
   const rows = createLargeReportFixture();
+  const csv = exportReportCsv(rows);
 
-  assert.throws(
-    () => exportReportCsv(rows),
-    /Report export exceeded the synchronous row budget/
-  );
+  assert.equal(csv.split('\n').length, expectedCsvLineCount(rows));
+  assert.match(csv, /report_row_00001/);
+  assert.match(csv, /report_row_12000/);
 });
 
 test('known batched fix exports the large report fixture', () => {
