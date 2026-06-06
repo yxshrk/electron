@@ -1,5 +1,5 @@
 // Client for Yash's run APIs (InsForge-backed). Behind a mock toggle so the Slack surface is
-// buildable/testable before /api/runs exists. REFLEX_BACKEND=mock (default in dev) → in-memory.
+// buildable/testable before /api/runs exists. REFLEX_BACKEND=mock (default in dev) -> in-memory.
 
 import type {
   ConfirmInput, DraftConfig, MediaArtifactInput, ReportDraft,
@@ -14,6 +14,33 @@ const DEFAULT_DRAFT_CONFIG: DraftConfig = {
 
 const useMock = (process.env.REFLEX_BACKEND ?? 'mock') === 'mock';
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+const TERMINAL_STATUSES = new Set(['shipped', 'diagnosis_failed', 'dispatch_failed', 'reproduction_failed', 'pr_failed']);
+
+interface RunDetailResponse {
+  events?: Array<{
+    id?: string;
+    event_type?: string;
+    eventType?: string;
+    status?: string | null;
+    title?: string;
+    detail?: string;
+    payload?: Record<string, unknown>;
+    created_at?: string;
+    createdAt?: string;
+  }>;
+  briefs?: Array<{
+    id: string;
+    where_it_happens: string;
+    actual_behavior: string;
+    expected_behavior?: string | null;
+    reproduction_context?: string | null;
+    affected_surface: ReportDraft['affectedSurface'];
+    evidence_summary?: ReportDraft['evidenceSummary'];
+    missing_info?: string[];
+    agent_prompt_preview: string;
+    status: ReportDraft['status'];
+  }>;
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, {
@@ -21,7 +48,20 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`${path} -> ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+/**
+ * Reads JSON from one of Yash's run APIs.
+ *
+ * @param path API path relative to `baseUrl`.
+ * @returns Parsed JSON response typed by the caller.
+ * @sideEffects Performs an HTTP GET against the configured app URL.
+ */
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${baseUrl}${path}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${path} -> ${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
 }
 
@@ -35,30 +75,126 @@ export function postContext(runId: string, messages: SlackContextCandidate[]): P
   return useMock ? mock.postContext(runId, messages) : post(`/api/runs/${runId}/context`, { messages });
 }
 
-/** Store one media artifact's metadata after upload to Storage (§8: one file per call). */
+/** Store one media artifact's metadata after upload to Storage (section 8: one file per call). */
 export function postMedia(runId: string, media: MediaArtifactInput): Promise<{ mediaArtifactId: string }> {
   return useMock ? mock.postMedia(runId, media) : post(`/api/runs/${runId}/media`, media);
 }
 
-/** Ask Yash to draft the confirmable report (§8: config body). */
+/** Ask Yash to draft the confirmable report (section 8: config body). */
 export function draftBugBrief(runId: string, config: DraftConfig = DEFAULT_DRAFT_CONFIG): Promise<ReportDraft> {
   return useMock ? mock.draftBugBrief(runId) : post(`/api/runs/${runId}/draft-bug-brief`, config);
 }
 
-/** User confirmed (optionally with edits) → Yash creates the intake package + advances status. */
-export function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promise<{ ok: true }> {
-  return useMock ? mock.confirmBugBrief(runId, input) : post(`/api/runs/${runId}/confirm-bug-brief`, input);
+/**
+ * Reads the latest confirmable report draft for Slack edit modal rendering.
+ *
+ * @param runId Reflex run ID.
+ * @returns Latest draft, or undefined when no brief exists.
+ * @sideEffects Reads the real run detail API when mock mode is disabled.
+ */
+export async function getDraft(runId: string): Promise<ReportDraft | undefined> {
+  if (useMock) return mock.getDraft(runId);
+  const detail = await get<RunDetailResponse>(`/api/runs/${runId}`);
+  const brief = detail.briefs?.[0];
+  if (!brief) return undefined;
+
+  return {
+    runId,
+    bugBriefId: brief.id,
+    status: brief.status,
+    whereItHappens: brief.where_it_happens,
+    actualBehavior: brief.actual_behavior,
+    expectedBehavior: brief.expected_behavior ?? undefined,
+    reproductionContext: brief.reproduction_context ?? undefined,
+    affectedSurface: brief.affected_surface,
+    evidenceSummary: brief.evidence_summary ?? [],
+    missingInfo: brief.missing_info ?? [],
+    agentPromptPreview: brief.agent_prompt_preview,
+  };
 }
 
-/** Subscribe to the run event stream. Returns an unsubscribe fn.
- *  Yash's /events emits SSE named events: `run-event` (+ `done`/`error`) — PR #8. */
+/**
+ * Confirms the report and starts Yash's diagnosis pipeline.
+ *
+ * @param runId Reflex run ID.
+ * @param input Optional edited fields and confirmation metadata.
+ * @returns Acknowledgement consumed by Slack interaction handlers.
+ * @sideEffects Writes the confirmed package and diagnosis through Yash's run APIs.
+ */
+export async function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promise<{ ok: true }> {
+  if (useMock) return mock.confirmBugBrief(runId, input);
+  await post(`/api/runs/${runId}/confirm-bug-brief`, input);
+  await post(`/api/runs/${runId}/diagnose`, {});
+  return { ok: true };
+}
+
+/**
+ * Subscribes to run events for Slack status mirroring.
+ *
+ * @param runId Reflex run ID.
+ * @param onEvent Callback invoked for each new run event.
+ * @returns Unsubscribe function.
+ * @sideEffects Uses mock listeners in mock mode; otherwise polls the run detail API.
+ */
 export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => void {
   if (useMock) return mock.subscribe(runId, onEvent);
-  const es = new EventSource(`${baseUrl}/api/runs/${runId}/events`);
-  es.addEventListener('run-event', (m) => onEvent(JSON.parse((m as MessageEvent).data)));
-  es.addEventListener('done', () => es.close());
-  es.addEventListener('error', () => es.close());
-  return () => es.close();
+
+  let closed = false;
+  const seen = new Set<string>();
+  void pollRunEvents(runId, seen, onEvent, () => closed).catch((error) => {
+    if (!closed) console.error(error);
+  });
+  return () => { closed = true; };
 }
 
 export const isMock = useMock;
+
+/**
+ * Polls the run detail API and emits unseen events to Slack.
+ *
+ * @param runId Reflex run ID.
+ * @param seen Event IDs already emitted.
+ * @param onEvent Callback invoked for each new event.
+ * @param isClosed Whether the caller has unsubscribed.
+ * @returns Nothing after a terminal status, timeout, or unsubscribe.
+ * @sideEffects Performs repeated HTTP reads against the run detail API.
+ */
+async function pollRunEvents(
+  runId: string,
+  seen: Set<string>,
+  onEvent: (e: RunEvent) => void,
+  isClosed: () => boolean
+): Promise<void> {
+  for (let i = 0; i < 80 && !isClosed(); i++) {
+    const detail = await get<RunDetailResponse>(`/api/runs/${runId}`);
+    for (const row of detail.events ?? []) {
+      const event = normalizeRunEvent(runId, row);
+      const key = row.id ?? `${event.eventType}:${event.createdAt ?? seen.size}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      onEvent(event);
+      if (event.status && TERMINAL_STATUSES.has(event.status)) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+}
+
+/**
+ * Normalizes Yash's snake_case event row into Laurence's Slack event contract.
+ *
+ * @param runId Reflex run ID.
+ * @param row Event row from the run detail API.
+ * @returns Slack-compatible run event.
+ * @sideEffects None.
+ */
+function normalizeRunEvent(runId: string, row: NonNullable<RunDetailResponse['events']>[number]): RunEvent {
+  return {
+    runId,
+    eventType: row.eventType ?? row.event_type ?? 'run.event',
+    status: row.status ?? undefined,
+    title: row.title ?? 'Run updated',
+    detail: row.detail,
+    payload: row.payload,
+    createdAt: row.createdAt ?? row.created_at,
+  };
+}

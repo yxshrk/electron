@@ -1,5 +1,5 @@
 // Draft a confirmable bug report from segmented evidence (TECHNICAL_DOCUMENT.md draft-bug-brief).
-// The point is a fast confirmation gate before spending diagnosis/agent tokens — placeholders are fine.
+// The point is a fast confirmation gate before spending diagnosis/agent tokens - placeholders are fine.
 import type { AffectedSurface, EvidenceSummaryItem, Role } from "@/lib/insforge/types";
 import type { SegmentResult } from "./segment";
 
@@ -22,12 +22,19 @@ export interface DraftFields {
   agentPromptPreview: string;
 }
 
-const isExportHang = (s: SegmentResult) => /report export hangs/i.test(s.symptomSeed);
+const EXPORT_HANG_PATTERN = /(?:report\s+)?export.*(?:hang|stuck|crash|freeze)|(?:hang|stuck|crash|freeze).*(?:report\s+)?export/i;
 
+/**
+ * Drafts a confirmable bug report from captured evidence.
+ *
+ * @param input Role, repo, segmented evidence, and optional transcript/notes.
+ * @returns Report fields shown to the user before confirmation.
+ * @sideEffects None.
+ */
 export function draftReport(input: DraftInput): DraftFields {
   const { segment } = input;
 
-  if (isExportHang(segment)) {
+  if (EXPORT_HANG_PATTERN.test(segment.symptomSeed)) {
     return {
       whereItHappens: "Report export screen",
       actualBehavior: "When the user exports a large report, the frontend hangs or stops responding.",

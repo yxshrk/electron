@@ -1,9 +1,10 @@
 // POST /api/runs/{runId}/context -> store copied Slack context candidates (Laurence's bug mode).
-// Owned by Yash (the ingest contract); Laurence calls it. Kept light here — the debug path is the
+// Owned by Yash (the ingest contract); Laurence calls it. Kept light here - the debug path is the
 // focus of this branch, but the route exists so both entry points converge on the same flow.
 import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
+import { buildSlackObservation } from "@/lib/slack/observation";
 import type { ReflexRunRow } from "@/lib/insforge/types";
 
 export const runtime = "nodejs";
@@ -17,6 +18,14 @@ interface SlackMessage {
   raw?: Record<string, unknown>;
 }
 
+/**
+ * Stores Slack context and mirrors it into an observation for report drafting.
+ *
+ * @param req Request containing `{ messages }` copied from Slack.
+ * @param params Dynamic route params containing the run ID.
+ * @returns JSON count of stored messages and status.
+ * @sideEffects Inserts Slack messages, inserts an observation, and appends a run event in InsForge.
+ */
 export async function POST(req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
@@ -34,6 +43,15 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
       permalink: m.permalink ?? null,
       has_files: Boolean(m.hasFiles),
       raw_payload: m.raw ?? {},
+    });
+  }
+
+  const observation = buildSlackObservation(run, messages);
+  if (observation.transcript) {
+    await dbInsert("observations", {
+      run_id: runId,
+      transcript: observation.transcript,
+      visible_state: observation.visibleState,
     });
   }
 

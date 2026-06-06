@@ -25,6 +25,14 @@ interface ObservationRow {
   };
 }
 
+/**
+ * Drafts the confirmable bug report from Slack context or debug-capture observations.
+ *
+ * @param req Request containing optional draft config.
+ * @param params Dynamic route params containing the run ID.
+ * @returns Confirmable report draft.
+ * @sideEffects Inserts a bug_briefs row and appends a report.drafted event in InsForge.
+ */
 export async function POST(req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
@@ -35,10 +43,14 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     `run_id=eq.${runId}&order=created_at.desc&limit=1`
   );
   const obs = observations[0];
-  const symptomSeed = obs?.visible_state?.symptomSeed || obs?.transcript || "Captured issue";
+  const symptomSeed =
+    obs?.visible_state?.symptomSeed ||
+    obs?.transcript ||
+    run.command_text ||
+    "Captured issue";
   const segment = {
     visibleState: obs?.visible_state ?? {},
-    evidenceSummary: obs?.visible_state?.evidenceSummary ?? [],
+    evidenceSummary: obs?.visible_state?.evidenceSummary ?? commandEvidence(run.command_text),
     symptomSeed,
   };
 
@@ -46,8 +58,8 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     role: run.role,
     repoUrl: run.repo_url,
     segment,
-    transcript: obs?.transcript,
-    notes: obs?.visible_state?.notes,
+    transcript: obs?.transcript ?? run.command_text,
+    notes: obs?.visible_state?.notes ?? run.command_text,
   });
 
   const brief = await dbInsert<BugBriefRow>("bug_briefs", {
@@ -85,4 +97,16 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     agentPromptPreview: fields.agentPromptPreview,
   };
   return NextResponse.json(draft);
+}
+
+/**
+ * Builds evidence from slash-command text when Slack history was not available.
+ *
+ * @param commandText Raw slash command text stored on the run.
+ * @returns Evidence summary items for report drafting.
+ * @sideEffects None.
+ */
+function commandEvidence(commandText: string): EvidenceSummaryItem[] {
+  const text = commandText.trim();
+  return text ? [{ kind: "slack_command", summary: text }] : [];
 }

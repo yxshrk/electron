@@ -8,6 +8,7 @@ import { ackBlocks, recorderBlocks, statusTimelineBlocks, reportBlocks, blocksFo
 import { createRun, draftBugBrief, confirmBugBrief, subscribe } from '../lib/slack/backend';
 import { getDraft } from '../lib/slack/mock-backend';
 import { DEFAULT_CONTEXT_WINDOW, type RunEvent } from '../lib/slack/contracts';
+import { buildSlackObservation } from '../lib/slack/observation';
 
 let pass = 0, fail = 0;
 function ok(name: string, cond: boolean) {
@@ -53,6 +54,24 @@ console.log('\n# block builders');
 
   const pr = blocksForEvent({ status: 'shipped', payload: { prUrl: 'https://x/pull/1' } });
   ok('shipped event → PR card', JSON.stringify(pr).includes('/pull/1'));
+}
+
+console.log('\n# slack context observation');
+{
+  const observation = buildSlackObservation(
+    { command_text: 'Customer says export hangs on large reports.' },
+    [
+      {
+        ts: '1710000000.000100',
+        userId: 'U_CSM',
+        text: 'When export runs, frontend crashes and the spinner never resolves.',
+        hasFiles: true,
+      },
+    ],
+  );
+  ok('normalizes export-hang symptom', observation.visibleState.symptomSeed === 'Report export hangs on large datasets');
+  ok('keeps command in transcript', observation.transcript.includes('[command] Customer says export hangs'));
+  ok('summarizes Slack file evidence', observation.visibleState.evidenceSummary.some((e) => e.kind === 'slack_message_with_file'));
 }
 
 console.log('\n# mock backend: createRun → draft → confirm → shipped');

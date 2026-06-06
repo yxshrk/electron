@@ -1,6 +1,6 @@
 // Initial investigation: turn a confirmed report into a structured symptom + ranked hypotheses,
 // each with a reproductionPlan + expectedFailure that Luke's Replicas agents can act on (C4).
-// Role lens per TECHNICAL_DOCUMENT.md §5. Deterministic fixtures keep the demo stable.
+// Role lens per TECHNICAL_DOCUMENT.md section 5. Deterministic fixtures keep the demo stable.
 import type { Hypothesis, Role } from "@/lib/insforge/types";
 
 export interface DiagnoseInput {
@@ -23,10 +23,19 @@ const ROLE_LENS: Record<Role, string> = {
   engineer: "Preserve technical specificity; skip business translation and go straight to reproduction.",
 };
 
+const EXPORT_HANG_PATTERN = /(?:report\s+)?export.*(?:hang|stuck|crash|freeze)|(?:hang|stuck|crash|freeze).*(?:report\s+)?export/i;
+
+/**
+ * Produces a role-aware diagnosis and ranked hypotheses from a confirmed report.
+ *
+ * @param input Confirmed report, role, and symptom seed.
+ * @returns Diagnosis result with evidence and actionable hypotheses.
+ * @sideEffects None.
+ */
 export function diagnose(input: DiagnoseInput): DiagnosisResult {
   const roleLens = ROLE_LENS[input.role];
 
-  if (/report export hangs/i.test(input.symptomSeed)) {
+  if (EXPORT_HANG_PATTERN.test(input.symptomSeed)) {
     return {
       symptom: "Report export hangs on large datasets",
       roleLens,
