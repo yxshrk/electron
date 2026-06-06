@@ -9,6 +9,7 @@ import { createRun, draftBugBrief, confirmBugBrief, subscribe, dispatch } from '
 import { getDraft } from '../lib/slack/mock-backend';
 import { DEFAULT_CONTEXT_WINDOW, type RunEvent } from '../lib/slack/contracts';
 import { buildSlackObservation } from '../lib/slack/observation';
+import { containsSecretLikeText, isSafeContextMessage } from '../lib/slack/context';
 
 let pass = 0, fail = 0;
 function ok(name: string, cond: boolean) {
@@ -62,6 +63,10 @@ console.log('\n# block builders');
 
 console.log('\n# slack context observation');
 {
+  ok('filters bot-authored context', !isSafeContextMessage({ ts: '1', bot_id: 'B_REFLEX', text: 'Reflex (report)' }));
+  ok('filters credential-looking context', containsSecretLikeText(['API', '_KEY=not-a-real-value'].join('')));
+  ok('keeps user bug context', isSafeContextMessage({ ts: '2', user: 'U_CSM', text: 'Customer export hangs on large reports.' }));
+
   const observation = buildSlackObservation(
     { command_text: 'Customer says export hangs on large reports.' },
     [
