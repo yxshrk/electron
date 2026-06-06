@@ -5,12 +5,13 @@ live next to this file. Architecture choices are from `../STACK_RESEARCH.md` §5
 
 ## 0. Sponsor credits (do once)
 - **v0 — $30** (first 200 people): redeem code **`V0-AI-NEXUS`** on v0.app → account → Billing/Redeem.
+  Status: ✅ $30 already on the hackathon account.
 - That's the only Vercel item in the sponsor doc. AI Gateway also gives **$5 free / 30 days**, no code needed.
 
 ## 1. CLI + auth
 ```bash
 npm i -g vercel            # installed: Vercel CLI 54.9.1
-vercel whoami              # currently: zejiashaojob-8019  ← confirm this is the hackathon account
+vercel whoami              # ✅ logged in as `laurenceshao` (email butsushiwushi@gmail.com — same account that holds the $30)
 # to switch accounts:  vercel logout && vercel login
 ```
 
@@ -54,7 +55,7 @@ providers, automatic failover (good demo resilience), vision-capable. With AI SD
 import { generateObject } from 'ai';
 import { z } from 'zod';
 const { object } = await generateObject({
-  model: 'anthropic/claude-sonnet-4.5',   // routed via AI Gateway, no provider import
+  model: 'anthropic/claude-sonnet-4.6',   // routed via AI Gateway, no provider import (confirm exact slug in the gateway model list)
   schema: z.object({ symptom: z.string(), hypotheses: z.array(z.object({
     title: z.string(), confidence: z.number(), reproductionPlan: z.string(),
     expectedFailure: z.string() })) }),
