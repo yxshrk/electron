@@ -2,8 +2,8 @@
 // Slack sends application/x-www-form-urlencoded with a `payload` JSON field; ack within 3s.
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { openModal, postMessage } from '../../../../lib/slack/client';
-import { editModal } from '../../../../lib/slack/blocks';
+import { openModal, postMessage, updateMessage } from '../../../../lib/slack/client';
+import { dispatchStartedBlocks, editModal } from '../../../../lib/slack/blocks';
 import { confirmBugBrief, dispatch, getDraft } from '../../../../lib/slack/backend';
 import type { ConfirmInput } from '../../../../lib/slack/contracts';
 
@@ -34,6 +34,7 @@ export async function POST(req: Request): Promise<Response> {
     const action = payload.actions?.[0];
     const runId: string = action?.value;
     const channel = payload.channel?.id;
+    const messageTs = payload.message?.ts;
     const threadTs = payload.message?.thread_ts ?? payload.message?.ts;
 
     switch (action?.action_id) {
@@ -42,6 +43,7 @@ export async function POST(req: Request): Promise<Response> {
         return new Response('', { status: 200 });
 
       case 'reflex_dispatch': // Gate 2: approve the diagnosis -> dispatch fix -> PR
+        markDispatchStartedInBackground(channel, messageTs);
         dispatchInBackground(runId);
         return new Response('', { status: 200 });
 
@@ -105,5 +107,25 @@ function confirmInBackground(runId: string, input: ConfirmInput = {}): void {
 function dispatchInBackground(runId: string): void {
   void dispatch(runId, { createPr: true }).catch((error) => {
     console.error('Reflex dispatch failed', error);
+  });
+}
+
+/**
+ * Replaces the clicked dispatch prompt with a non-clickable "started" card.
+ *
+ * @param channel Slack channel ID that contains the dispatch prompt.
+ * @param messageTs Slack message timestamp for the dispatch prompt.
+ * @returns Nothing.
+ * @sideEffects Calls Slack `chat.update`; failures are logged and do not block dispatch.
+ */
+function markDispatchStartedInBackground(channel?: string, messageTs?: string): void {
+  if (!channel || !messageTs) return;
+  void updateMessage({
+    channel,
+    ts: messageTs,
+    text: 'Dispatch started',
+    blocks: dispatchStartedBlocks(),
+  }).catch((error) => {
+    console.error('Reflex dispatch prompt update failed', error);
   });
 }
