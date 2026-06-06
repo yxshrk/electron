@@ -78,7 +78,7 @@ Ninety seconds, complaint to merged fix. **The kicker:** re-tag the same screen 
 ## Current MVP readiness checklist
 
 The detailed implementation plan lives in [TECHNICAL_DOCUMENT.md](./TECHNICAL_DOCUMENT.md). The
-short version:
+operational demo runbook lives in [DEMO_RUNBOOK.md](./DEMO_RUNBOOK.md). The short version:
 
 P0 required for the demo:
 
