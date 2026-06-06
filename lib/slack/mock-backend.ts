@@ -2,8 +2,8 @@
 // Replays a realistic RunEvent sequence on a timer (shared-contracts §2 state machine).
 
 import type {
-  ReportDraft, RunCreateInput, RunCreateResponse, RunEvent,
-  SlackContextCandidate, SlackMediaCandidate,
+  ConfirmInput, MediaArtifactInput, ReportDraft, RunCreateInput, RunCreateResponse,
+  RunEvent, SlackAttachment, SlackContextCandidate,
 } from './contracts';
 
 interface MockRun {
@@ -44,23 +44,23 @@ export async function createRun(input: RunCreateInput): Promise<RunCreateRespons
   return { runId: id, status: 'created', recordingUrl };
 }
 
-export async function postContext(runId: string, messages: SlackContextCandidate[]): Promise<{ ok: true }> {
+export async function postContext(runId: string, messages: SlackContextCandidate[], attachments: SlackAttachment[]): Promise<{ ok: true }> {
   const r = runs.get(runId);
-  if (r) r.contextCount = messages.length;
+  if (r) { r.contextCount = messages.length; r.mediaCount = attachments.length; }
   return { ok: true };
 }
 
-export async function postMedia(runId: string, media: SlackMediaCandidate[]): Promise<{ ok: true }> {
+export async function postMedia(runId: string, _media: MediaArtifactInput): Promise<{ mediaArtifactId: string }> {
   const r = runs.get(runId);
-  if (r) r.mediaCount = media.length;
-  return { ok: true };
+  if (r) r.mediaCount += 1;
+  return { mediaArtifactId: `media_${runId}_${r?.mediaCount ?? 1}` };
 }
 
 export async function draftBugBrief(runId: string): Promise<ReportDraft> {
   return draftFor(runId);
 }
 
-export async function confirmBugBrief(runId: string, _edits?: Record<string, string>): Promise<{ ok: true }> {
+export async function confirmBugBrief(runId: string, _input?: ConfirmInput): Promise<{ ok: true }> {
   emitSequence(runId); // confirmation kicks off the scripted diagnose→ship run
   return { ok: true };
 }
@@ -88,7 +88,7 @@ function emitSequence(runId: string): void {
     [1600, { eventType: 'agent.dispatched', status: 'dispatched', title: 'Dispatched', detail: 'Hypotheses → sandboxes' }],
     [2800, { eventType: 'agent.reproduced', status: 'reproduced', title: 'Reproduced', detail: 'Export timed out at 30s on 10k rows' }],
     [3800, { eventType: 'agent.fixed', status: 'fixed', title: 'Fixed', detail: 'Added pagination; test passes' }],
-    [4600, { eventType: 'pr.opened', status: 'shipped', title: 'PR opened', detail: 'Batch export + stream progress', payload: { prUrl: `${repo}/pull/42` } }],
+    [4600, { eventType: 'pr.opened', status: 'shipped', title: 'PR opened', detail: 'Batch export + stream progress', url: `${repo}/pull/42`, payload: { prUrl: `${repo}/pull/42` } }],
   ];
   for (const [ms, partial] of steps) setTimeout(() => emit(runId, partial), ms);
 }

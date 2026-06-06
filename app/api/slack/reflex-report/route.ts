@@ -5,7 +5,7 @@ import { verifySlackRequest } from '../../../../lib/slack/verify';
 import { ackBlocks, reportBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { gatherContext } from '../../../../lib/slack/context';
-import { createRun, postContext, postMedia, draftBugBrief, subscribe } from '../../../../lib/slack/backend';
+import { createRun, postContext, draftBugBrief, subscribe } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -52,9 +52,8 @@ async function run(channelId: string, commandText: string): Promise<void> {
   try {
     const ctx = await gatherContext(channelId, input.contextWindow);
     msgCount = ctx.messages.length;
-    fileCount = ctx.media.length;
-    await postContext(runId, ctx.messages, input.contextWindow.maxPromptChars);
-    if (ctx.media.length) await postMedia(runId, ctx.media);
+    fileCount = ctx.attachments.length;
+    await postContext(runId, ctx.messages, ctx.attachments);
   } catch { /* mock or missing scopes — proceed with the draft */ }
 
   // Draft + post the confirmable report into the thread.
@@ -66,7 +65,7 @@ async function run(channelId: string, commandText: string): Promise<void> {
   const unsub = subscribe(runId, async (ev) => {
     await updateMessage({ channel: root.channel, ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
     if (ev.status === 'shipped') {
-      const prUrl = ev.payload?.prUrl as string | undefined;
+      const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
       if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
       unsub();
     }

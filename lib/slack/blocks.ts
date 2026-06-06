@@ -162,8 +162,9 @@ export function prCardBlocks(prUrl: string, summary?: string): Block[] {
 }
 
 /** Render the right blocks for an incoming RunEvent (timeline, or PR card on ship). */
-export function blocksForEvent(ev: { status?: string; payload?: Record<string, unknown>; detail?: string }): Block[] {
-  const prUrl = ev.payload?.prUrl as string | undefined;
-  if (ev.status === 'shipped' && prUrl) return prCardBlocks(prUrl, ev.detail);
+export function blocksForEvent(ev: { status?: string; payload?: Record<string, unknown>; url?: string; detail?: string }): Block[] {
+  // §8 /events puts the PR url top-level (`url`); shared-contracts put it in payload.prUrl — accept both.
+  const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
+  if ((ev.status === 'shipped' || prUrl) && prUrl) return prCardBlocks(prUrl, ev.detail);
   return statusTimelineBlocks((ev.status as RunStatus) ?? 'created', ev.detail);
 }

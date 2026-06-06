@@ -2,10 +2,15 @@
 // buildable/testable before /api/runs exists. REFLEX_BACKEND=mock (default in dev) → in-memory.
 
 import type {
-  ReportDraft, RunCreateInput, RunCreateResponse, RunEvent,
-  SlackContextCandidate, SlackMediaCandidate,
+  ConfirmInput, DraftConfig, MediaArtifactInput, ReportDraft,
+  RunCreateInput, RunCreateResponse, RunEvent, SlackAttachment, SlackContextCandidate,
 } from './contracts';
 import * as mock from './mock-backend';
+
+const DEFAULT_DRAFT_CONFIG: DraftConfig = {
+  includeSlackHistory: true, messageLimit: 100, includeAttachments: true,
+  attachmentLimit: 3, includeDebugCapture: true, maxPromptChars: 6000,
+};
 
 const useMock = (process.env.REFLEX_BACKEND ?? 'mock') === 'mock';
 const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
@@ -25,24 +30,24 @@ export function createRun(input: RunCreateInput): Promise<RunCreateResponse> {
   return useMock ? mock.createRun(input) : post('/api/runs', input);
 }
 
-/** Store copied Slack context candidates. */
-export function postContext(runId: string, messages: SlackContextCandidate[], maxPromptChars: number): Promise<{ ok: true }> {
-  return useMock ? mock.postContext(runId, messages) : post(`/api/runs/${runId}/context`, { messages, maxPromptChars });
+/** Store copied Slack context candidates (§8: { messages, attachments }). */
+export function postContext(runId: string, messages: SlackContextCandidate[], attachments: SlackAttachment[]): Promise<{ ok: true }> {
+  return useMock ? mock.postContext(runId, messages, attachments) : post(`/api/runs/${runId}/context`, { messages, attachments });
 }
 
-/** Store Slack file metadata. */
-export function postMedia(runId: string, media: SlackMediaCandidate[]): Promise<{ ok: true }> {
-  return useMock ? mock.postMedia(runId, media) : post(`/api/runs/${runId}/media`, { media });
+/** Store one media artifact's metadata after upload to Storage (§8: one file per call). */
+export function postMedia(runId: string, media: MediaArtifactInput): Promise<{ mediaArtifactId: string }> {
+  return useMock ? mock.postMedia(runId, media) : post(`/api/runs/${runId}/media`, media);
 }
 
-/** Ask Yash to draft the confirmable report. */
-export function draftBugBrief(runId: string): Promise<ReportDraft> {
-  return useMock ? mock.draftBugBrief(runId) : post(`/api/runs/${runId}/draft-bug-brief`, {});
+/** Ask Yash to draft the confirmable report (§8: config body). */
+export function draftBugBrief(runId: string, config: DraftConfig = DEFAULT_DRAFT_CONFIG): Promise<ReportDraft> {
+  return useMock ? mock.draftBugBrief(runId) : post(`/api/runs/${runId}/draft-bug-brief`, config);
 }
 
 /** User confirmed (optionally with edits) → Yash creates the intake package + advances status. */
-export function confirmBugBrief(runId: string, edits?: Record<string, string>): Promise<{ ok: true }> {
-  return useMock ? mock.confirmBugBrief(runId, edits) : post(`/api/runs/${runId}/confirm-bug-brief`, { edits });
+export function confirmBugBrief(runId: string, input: ConfirmInput = {}): Promise<{ ok: true }> {
+  return useMock ? mock.confirmBugBrief(runId, input) : post(`/api/runs/${runId}/confirm-bug-brief`, input);
 }
 
 /** Subscribe to the run event stream. Returns an unsubscribe fn. */

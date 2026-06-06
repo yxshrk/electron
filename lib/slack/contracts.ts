@@ -33,21 +33,48 @@ export interface RunCreateResponse {
   recordingUrl?: string;
 }
 
-/** Copied Slack context candidates — POST /api/runs/{runId}/context. */
+// POST /api/runs/{runId}/context — field names per TECHNICAL_DOCUMENT.md §8.
 export interface SlackContextCandidate {
-  ts: string;
-  userId?: string;
+  slackMessageTs: string;
+  slackUserId?: string;
   text: string;
+  permalink?: string;
+  hasFiles?: boolean;
 }
 
-/** Slack file metadata — POST /api/runs/{runId}/media. */
-export interface SlackMediaCandidate {
-  fileId: string;
-  name: string;
-  mimetype: string;
-  kind: 'screenshot' | 'recording' | 'file';
-  urlPrivate?: string;
-  storageKey?: string;
+export interface SlackAttachment {
+  slackFileId: string;
+  slackMessageTs: string;
+  kind: 'screenshot' | 'video' | 'recording' | 'file';
+  filename: string;
+}
+
+/** POST /api/runs/{runId}/media — one file per call (TECHNICAL_DOCUMENT.md §8). */
+export interface MediaArtifactInput {
+  kind: 'screenshot' | 'video' | 'recording' | 'log' | 'file';
+  source: 'slack_file' | 'recorder' | 'manual';
+  storageUrl?: string;
+  slackFileId?: string;
+  summary?: string;
+  safeToShare?: boolean;
+}
+
+/** POST /api/runs/{runId}/draft-bug-brief request body (§8). */
+export interface DraftConfig {
+  includeSlackHistory: boolean;
+  messageLimit: number;
+  includeAttachments: boolean;
+  attachmentLimit: number;
+  includeDebugCapture: boolean;
+  maxPromptChars: number;
+}
+
+/** POST /api/runs/{runId}/confirm-bug-brief request body (§8). */
+export interface ConfirmInput {
+  bugBriefId?: string;
+  editedFields?: Record<string, string>;
+  additionalMediaArtifactIds?: string[];
+  confirmedBy?: string;
 }
 
 /** C2 — Yash → Laurence. The confirmable report. */
@@ -84,7 +111,8 @@ export interface RunEvent {
   status?: RunStatus | string;
   title: string;
   detail?: string;
-  payload?: Record<string, unknown>; // prUrl lives here on the ship event
+  payload?: Record<string, unknown>;
+  url?: string;      // §8 /events puts the PR url here on pr.opened
   actor?: string;
-  createdAt: string;
+  createdAt?: string;
 }

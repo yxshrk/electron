@@ -54,16 +54,16 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  // Edit modal submitted → send edited fields to the same confirmation route.
+  // Edit modal submitted → send edited fields to the same confirmation route (§8 editedFields).
   if (payload.type === 'view_submission' && payload.view?.callback_id === 'reflex_edit_submit') {
     const runId: string = payload.view.private_metadata;
     const v = payload.view.state?.values ?? {};
-    const edits = {
+    const editedFields = {
       whereItHappens: v.where_block?.where_input?.value ?? '',
       actualBehavior: v.actual_block?.actual_input?.value ?? '',
       expectedBehavior: v.expected_block?.expected_input?.value ?? '',
     };
-    void confirmBugBrief(runId, edits);
+    void confirmBugBrief(runId, { editedFields, confirmedBy: payload.user?.id });
     return new Response('', { status: 200 }); // closes the modal
   }
 
