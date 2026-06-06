@@ -150,6 +150,30 @@ export function reportBlocks(draft: ReportDraft, contextLine?: string): Block[] 
   return blocks;
 }
 
+/** Gate 2: after diagnosis lands, ask the user to approve dispatching a fix (→ reproduce/fix/PR). */
+export function dispatchPromptBlocks(
+  runId: string,
+  info: { symptom?: string; hypotheses?: Array<{ title: string; confidence?: number }> },
+): Block[] {
+  const hyps = (info.hypotheses ?? [])
+    .slice(0, 3)
+    .map((h, i) => `${i + 1}. *${h.title}*${h.confidence != null ? `  _(${Math.round(h.confidence * 100)}%)_` : ''}`)
+    .join('\n');
+
+  const blocks: Block[] = [header('🧪 Diagnosis ready — approve the fix?')];
+  if (info.symptom) blocks.push(section(`*Symptom*\n${info.symptom}`));
+  if (hyps) blocks.push(section(`*Top hypotheses*\n${hyps}`));
+  blocks.push({
+    type: 'actions',
+    block_id: `dispatch:${runId}`,
+    elements: [
+      { type: 'button', style: 'primary', text: { type: 'plain_text', text: '🚀 Approve & dispatch fix', emoji: true }, action_id: 'reflex_dispatch', value: runId },
+    ],
+  });
+  blocks.push(context('⚡ Dispatches a coding agent to reproduce + fix in a sandbox, then opens a PR.'));
+  return blocks;
+}
+
 /** Modal opened on Edit Report — prefilled with the editable fields. */
 export function editModal(runId: string, draft: ReportDraft): Block {
   const input = (blockId: string, actionId: string, label: string, initial: string, multiline = true): Block => ({

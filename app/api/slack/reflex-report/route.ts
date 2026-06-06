@@ -2,10 +2,10 @@
 // No typing required: defaults role=sales_csm, repo=DEFAULT_REPO, gather latest 100 msgs + 3 files.
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { ackBlocks, reportBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
+import { ackBlocks, reportBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { gatherContext } from '../../../../lib/slack/context';
-import { createRun, postContext, draftBugBrief, subscribe } from '../../../../lib/slack/backend';
+import { createRun, postContext, draftBugBrief, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
@@ -62,9 +62,15 @@ async function run(channelId: string, commandText: string): Promise<void> {
   const contextLine = `Used /reflex-report, ${msgCount} channel messages, and ${fileCount} file${fileCount === 1 ? '' : 's'}`;
   await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Confirm the bug report', blocks: reportBlocks(draft, contextLine) });
 
-  // Stream status into the root card; post a PR card on ship.
+  // Stream status into the root card; post the Gate-2 approval card on diagnosed; PR card on ship.
+  let dispatchPrompted = false;
   const unsub = subscribe(runId, async (ev) => {
     await updateMessage({ channel: root.channel, ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
+    if (ev.status === 'diagnosed' && !dispatchPrompted) {
+      dispatchPrompted = true;
+      const diag = await getDiagnosis(runId).catch(() => ({ hypotheses: [] }));
+      await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Diagnosis ready — approve the fix?', blocks: dispatchPromptBlocks(runId, diag) });
+    }
     if (ev.status === 'shipped') {
       const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
       if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });

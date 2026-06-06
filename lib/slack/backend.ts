@@ -40,6 +40,14 @@ interface RunDetailResponse {
     agent_prompt_preview: string;
     status: ReportDraft['status'];
   }>;
+  diagnoses?: Array<{ id: string; symptom: string }>;
+  hypotheses?: Array<{ id: string; title: string; confidence?: number }>;
+}
+
+/** A diagnosis + its ranked hypotheses, for the Gate-2 "approve & dispatch" card. */
+export interface DiagnosisSummary {
+  symptom?: string;
+  hypotheses: Array<{ id: string; title: string; confidence?: number }>;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -125,6 +133,44 @@ export async function confirmBugBrief(runId: string, input: ConfirmInput = {}): 
   if (useMock) return mock.confirmBugBrief(runId, input);
   await post(`/api/runs/${runId}/confirm-bug-brief`, input);
   return { ok: true };
+}
+
+/**
+ * Reads the diagnosis + ranked hypotheses for the Gate-2 confirmation card.
+ *
+ * @param runId Reflex run ID.
+ * @returns The symptom and ranked hypotheses (empty list if none / unavailable).
+ * @sideEffects Reads the real run detail API when mock mode is disabled.
+ */
+export async function getDiagnosis(runId: string): Promise<DiagnosisSummary> {
+  if (useMock) return mock.getDiagnosis(runId);
+  try {
+    const detail = await get<RunDetailResponse>(`/api/runs/${runId}`);
+    return {
+      symptom: detail.diagnoses?.[0]?.symptom,
+      hypotheses: (detail.hypotheses ?? []).map((h) => ({ id: h.id, title: h.title, confidence: h.confidence })),
+    };
+  } catch {
+    return { hypotheses: [] };
+  }
+}
+
+/**
+ * Gate 2: after the user approves the diagnosis in Slack, fire Yash's dispatch orchestrator
+ * (`POST /api/runs/{runId}/dispatch`), which hands the top hypothesis to Luke's Replicas /
+ * scripted-fallback path and opens the PR. Defaults to creating a real PR.
+ *
+ * @param runId Reflex run ID.
+ * @param opts Optional hypothesis selection, provider, and createPr flag.
+ * @returns Acknowledgement consumed by the Slack interaction handler.
+ * @sideEffects Triggers reproduce → fix → PR through Yash's + Luke's routes.
+ */
+export function dispatch(
+  runId: string,
+  opts: { hypothesisId?: string; provider?: 'replicas' | 'scripted'; createPr?: boolean } = {},
+): Promise<{ ok: true }> {
+  if (useMock) return mock.dispatch(runId, opts);
+  return post(`/api/runs/${runId}/dispatch`, { createPr: opts.createPr ?? true, ...opts }).then(() => ({ ok: true }));
 }
 
 /**
