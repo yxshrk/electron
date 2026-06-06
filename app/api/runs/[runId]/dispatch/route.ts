@@ -1,8 +1,9 @@
 // POST /api/runs/{runId}/dispatch
 // After the user confirms the report, trigger Luke's Replicas/scripted dispatch.
 // Builds a DispatchInput from the stored top (or chosen) hypothesis and forwards it to Luke's
-// /dispatch-replicas route. This is the single handoff used by Slack and manual retry paths.
+// Replicas/scripted dispatcher. This is the single handoff used by Slack and manual retry paths.
 import { NextRequest, NextResponse } from "next/server";
+import { dispatchConfirmedHypothesis } from "@/agent/replicas/dispatch";
 import { dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { persistEvidence } from "@/lib/insforge/evidence";
@@ -24,6 +25,14 @@ interface HypothesisRow {
   confidence: number;
 }
 
+/**
+ * Dispatches the top confirmed hypothesis to Replicas or the scripted fallback.
+ *
+ * @param req Request containing optional hypothesis selection, provider, and PR creation flags.
+ * @param params Route params containing the Reflex run ID.
+ * @returns Dispatch result JSON or an error response.
+ * @sideEffects Writes run status events, may start agent work, and may persist evidence/PR rows.
+ */
 export async function POST(req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
@@ -66,9 +75,8 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     },
   };
 
-  const origin = req.nextUrl.origin;
   try {
-    const providerLabel = body.provider ?? (process.env.REPLICAS_API_KEY ? "replicas" : "scripted");
+    const providerLabel = resolveDispatchProvider(body.provider);
     await setStatus(runId, "dispatched", {
       eventType: "dispatch.started",
       title: "Dispatched to Replicas",
@@ -77,13 +85,10 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
       actor: "orchestrator",
     });
 
-    const res = await fetch(`${origin}/api/runs/${runId}/dispatch-replicas`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...input, provider: body.provider, createPr: body.createPr }),
+    const result = await dispatchConfirmedHypothesis(input, {
+      createPr: body.createPr === true,
+      preferScriptedFallback: body.provider === "scripted",
     });
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result?.error ?? `dispatch-replicas returned ${res.status}`);
 
     // The scripted fallback returns evidence inline — persist it now so the run advances past
     // `dispatched` (to fixed/shipped) and the PR surfaces. The live Replicas path persists later
@@ -104,4 +109,16 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     });
     return NextResponse.json({ status: "dispatch_failed", error: String(e) }, { status: 502 });
   }
+}
+
+/**
+ * Resolves the provider label shown in the dispatch-started timeline event.
+ *
+ * @param requestedProvider Optional provider requested by the caller.
+ * @returns Provider label that reflects the runtime path the dispatcher can actually use.
+ * @sideEffects Reads `REPLICAS_API_KEY` to determine live Replicas availability.
+ */
+function resolveDispatchProvider(requestedProvider?: "replicas" | "scripted"): "replicas" | "scripted" {
+  if (requestedProvider === "scripted") return "scripted";
+  return process.env.REPLICAS_API_KEY ? "replicas" : "scripted";
 }

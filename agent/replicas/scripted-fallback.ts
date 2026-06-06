@@ -45,6 +45,17 @@ export function runScriptedFallback(
   }
 
   const repoRoot = options.repoRoot ?? process.cwd();
+  if (isKnownExportFixAlreadyApplied(repoRoot)) {
+    return {
+      branchName,
+      dryRun: true,
+      failingCommand: FAILING_COMMAND,
+      passingCommand: PASSING_COMMAND,
+      prBody,
+      evidence: buildScriptedEvidence(input, 'fixed')
+    };
+  }
+
   assertCleanWorktree(repoRoot);
   runCommand(repoRoot, 'git', ['checkout', '-b', branchName]);
   assertCommandFails(repoRoot, FAILING_COMMAND.split(' '));
@@ -97,6 +108,18 @@ export function applyKnownExportFix(repoRoot: string): void {
   }
 
   writeFileSync(exportPath, source.replace(BROKEN_DEFAULT_CALL, FIXED_DEFAULT_CALL));
+}
+
+/**
+ * Checks whether the known seeded export bug has already been fixed in the target repo.
+ *
+ * @param repoRoot Repository root that contains the export implementation.
+ * @returns True when the fixed default call is present and the seeded broken call is absent.
+ * @sideEffects Reads `app/test-fixtures/reports/export.ts` from the target repository.
+ */
+function isKnownExportFixAlreadyApplied(repoRoot: string): boolean {
+  const source = readFileSync(join(repoRoot, EXPORT_FILE), 'utf8');
+  return source.includes(FIXED_DEFAULT_CALL) && !source.includes(BROKEN_DEFAULT_CALL);
 }
 
 /**
