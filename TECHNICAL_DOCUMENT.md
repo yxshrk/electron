@@ -658,7 +658,130 @@ MODEL_API_KEY=
 
 Keep these values out of the browser unless they are explicitly public. Server-side API routes should own all privileged InsForge, GitHub, model, and agent credentials.
 
-## 12. Build / Fake / Name Cuts
+## 12. Team Execution Plan
+
+The team should split by interface boundaries, not by page sections. Each person should own one vertical path with a clear input and output contract.
+
+### 12.1 Owners
+
+| Owner | Primary Scope | Must Deliver | Depends On |
+| --- | --- | --- | --- |
+| Yash | Screen recording and capture UX | Role selector, screen-share preview, transcript input, screenshot or recording capture, upload-ready payload | `/api/intake` contract |
+| Luke | Next.js app, InsForge backend, orchestration state | Project scaffold, InsForge schema, API routes, state machine, dashboard data flow | InsForge project credentials |
+| Laurence | Diagnosis, reproduction, and PR path | Seeded bug, deterministic reproduction/fix path, GitHub PR creation, evidence payload | Session and hypothesis contract |
+
+### 12.2 Workstream Contracts
+
+Yash to Luke:
+
+```json
+{
+  "source": "web",
+  "role": "sales",
+  "repoUrl": "https://github.com/yxshrk/electron",
+  "transcript": "Customer says export hangs on large reports.",
+  "screenshotBase64": "...",
+  "recordingUrl": null
+}
+```
+
+Luke to Laurence:
+
+```json
+{
+  "sessionId": "sess_123",
+  "repoUrl": "https://github.com/yxshrk/electron",
+  "role": "sales",
+  "symptom": "Report export hangs on large datasets",
+  "hypotheses": [
+    {
+      "id": "hyp_1",
+      "title": "Unbounded report query",
+      "reproductionPlan": "Seed a large dataset and trigger report export",
+      "expectedFailure": "Export request times out or spinner never resolves"
+    }
+  ]
+}
+```
+
+Laurence to Luke:
+
+```json
+{
+  "sessionId": "sess_123",
+  "hypothesisId": "hyp_1",
+  "status": "shipped",
+  "rootCause": "Report export loads all rows synchronously before writing the file.",
+  "fixSummary": "Batch export rows and stream progress back to the UI.",
+  "verification": "Large export fixture completes under the demo timeout.",
+  "logsUrl": "https://...",
+  "prUrl": "https://github.com/yxshrk/electron/pull/..."
+}
+```
+
+### 12.3 Shared State Machine
+
+Every pipeline stage should be stored on `capture_sessions.status` and mirrored in the UI.
+
+```text
+created -> observed -> diagnosed -> dispatched -> reproduced -> fixed -> shipped
+```
+
+Failure states:
+
+```text
+diagnosis_failed
+dispatch_failed
+reproduction_failed
+pr_failed
+```
+
+The UI should never infer progress locally. It should render the latest status from InsForge so refreshes and teammate actions stay consistent.
+
+### 12.4 Build Order for Three People
+
+1. Luke creates the Next.js app, InsForge connection, schema, and `/api/intake`.
+2. Yash builds the capture UI against a mocked `/api/intake` response, then switches to Luke's real endpoint.
+3. Laurence creates the seeded bug path and a local script or API utility that can produce a PR from a known fix.
+4. Luke adds `/api/diagnose` with deterministic JSON for the rehearsed transcript.
+5. Luke and Laurence connect `/api/dispatch` to the reproduction/fix/PR path.
+6. Yash connects the live UI timeline to InsForge polling or Realtime.
+7. Everyone rehearses the same script three times and removes any live dependency that flakes.
+
+### 12.5 Demo Ownership
+
+| Demo Moment | Owner | Fallback |
+| --- | --- | --- |
+| Role selection and screen capture | Yash | Use transcript input and static screenshot |
+| Session creation and persistence | Luke | Use seeded session row in InsForge |
+| Diagnosis and hypothesis tree | Luke | Use deterministic hardcoded diagnosis for the demo transcript |
+| Reproduction and fix evidence | Laurence | Use precomputed logs and seeded patch |
+| GitHub PR output | Laurence | Use an already-open demo PR link |
+| Final pipeline walkthrough | Luke | Walk through stored InsForge session states |
+
+### 12.6 Missing Decisions
+
+- Which exact repository contains the seeded demo bug?
+- Is the primary demo input a screen recording, a screenshot, or both?
+- Which model path generates the diagnosis JSON: InsForge Model Gateway or a direct model API?
+- What GitHub token can create branches and PRs for the demo repo?
+- What InsForge project is linked, and who owns the project credentials?
+- Is the agent path real, scripted, or hybrid for the first demo?
+- What is the no-network fallback if the agent or GitHub API is slow?
+
+### 12.7 Definition of Done
+
+The MVP is done when the team can start from the Web UI and reach a real or pre-authorized PR link with these artifacts persisted in InsForge:
+
+- Original role-tagged report.
+- Screenshot or recording reference.
+- Structured symptom.
+- At least one hypothesis.
+- Reproduction evidence.
+- Fix summary.
+- PR URL.
+
+## 13. Build / Fake / Name Cuts
 
 Build:
 
@@ -686,7 +809,7 @@ Name:
 - Mobile reproduction path unless Limrun is ready.
 - Deep Slack workflow automation.
 
-## 13. Verification Strategy
+## 14. Verification Strategy
 
 ### Functional Tests
 
@@ -714,7 +837,7 @@ The demo is ready when the team can run this script three times in a row:
 5. Confirm the fix is generated.
 6. Open the PR and show the evidence.
 
-## 14. Security and Privacy
+## 15. Security and Privacy
 
 The hackathon implementation is not production-ready for sensitive screen data, but it should still follow basic safety rules:
 
@@ -727,7 +850,7 @@ The hackathon implementation is not production-ready for sensitive screen data, 
 
 Production requirements would include screenshot redaction, data retention controls, organization-level access control, audit logs, and explicit consent UX.
 
-## 15. Technical Risks
+## 16. Technical Risks
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
@@ -739,7 +862,7 @@ Production requirements would include screenshot redaction, data retention contr
 | InsForge project is not linked before demo | Backend calls fail | Run `npx @insforge/cli current` during setup and keep a fallback project ready |
 | Sponsor APIs differ from assumptions | Integration delays | Keep Replicas, Devin, Slack, and Limrun outside the core dependency path |
 
-## 16. Open Questions to Verify
+## 17. Open Questions to Verify
 
 - Does Replicas expose a programmatic API for dispatching agent tasks, or only integrations through Slack, Linear, GitHub, and similar tools?
 - What is the fastest reliable way to pass a confirmed fix task into Devin during the hackathon?
@@ -748,7 +871,7 @@ Production requirements would include screenshot redaction, data retention contr
 - Can Limrun be integrated quickly enough to justify a mobile stretch demo?
 - What are the official judging criteria and sponsor-specific prize requirements on the day?
 
-## 17. Hackathon Demo Script
+## 18. Hackathon Demo Script
 
 Opening:
 
@@ -770,7 +893,7 @@ Closer:
 
 Switch the role to `CEO / Founder` on the same screen and say: "Reporting feels slow." Reflex should produce a broader diagnosis with performance and workflow hypotheses instead of a narrow customer bug report. This proves the role tag changes the engineering lens.
 
-## 18. Success Criteria
+## 19. Success Criteria
 
 The hackathon project is successful if judges see:
 
@@ -789,7 +912,7 @@ structured symptom -> sandbox reproduction -> fix -> green PR
 
 Everything before that spine can be scripted. Everything after that spine can be roadmap.
 
-## 19. Sources
+## 20. Sources
 
 - InsForge Hackathon Luma page: https://luma.com/ainexus-t0fl
 - InsForge docs introduction: https://docs.insforge.dev/introduction
