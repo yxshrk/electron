@@ -249,3 +249,7 @@ __marimo__/
 /build
 *.tsbuildinfo
 next-env.d.ts
+
+# Reflex app source — keep tracked despite Python lib/ ignore
+!/lib/
+!/lib/**

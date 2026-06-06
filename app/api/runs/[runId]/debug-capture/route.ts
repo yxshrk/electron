@@ -9,6 +9,7 @@ import { dbInsert, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { uploadObject } from "@/lib/insforge/storage";
 import { analyzeDebugCapture } from "@/lib/diagnosis/vision";
+import { summarizeTimeline, type CaptureEvent } from "@/lib/diagnosis/timeline";
 import type { ImagePart } from "@/lib/ai/gateway";
 import { shortKey } from "@/lib/ids";
 import type { MediaArtifactRow, MediaKind, ReflexRunRow } from "@/lib/insforge/types";
@@ -48,6 +49,17 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   const recordingKind =
     (form.get("recordingKind") as string | null) === "video" ? "video" : "screen_recording";
 
+  // Structured capture timeline (clicks / network / console / errors) — the high-signal evidence.
+  let events: CaptureEvent[] = [];
+  const eventsRaw = form.get("events") as string | null;
+  if (eventsRaw) {
+    try {
+      events = JSON.parse(eventsRaw);
+    } catch {
+      /* ignore malformed timeline */
+    }
+  }
+
   const recordingFile = form.get("recording") as File | null;
   const audioFile = form.get("audio") as File | null;
   const frameFiles = form.getAll("frames").filter((f): f is File => f instanceof File);
@@ -78,7 +90,10 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     stored++;
   }
 
-  // Understand the capture: InsForge vision model on sampled frames, with a deterministic fallback.
+  // Two signals, in priority order:
+  //  1. the structured timeline (a real failing request beats a guess at a spinner)
+  //  2. vision on sampled frames, with a deterministic fallback.
+  const timeline = summarizeTimeline(events);
   const segment = await analyzeDebugCapture(
     {
       transcript,
@@ -91,25 +106,31 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
     visionFrames
   );
 
+  const symptomSeed = timeline.symptomSeed ?? segment.symptomSeed;
+  const evidenceSummary = [...timeline.evidenceSummary, ...segment.evidenceSummary];
+
   await dbInsert("observations", {
     run_id: runId,
     transcript: transcript ?? "",
     visible_state: {
       ...segment.visibleState,
+      ...timeline.visibleState,
       notes: notes ?? "",
-      symptomSeed: segment.symptomSeed,
-      evidenceSummary: segment.evidenceSummary,
-      source: "debug_capture",
+      symptomSeed,
+      anchors: timeline.anchors, // grep targets for diagnosis grounding
+      timeline: timeline.lines,
+      evidenceSummary,
+      source: events.length > 0 ? "timeline" : "debug_capture",
     },
   });
 
   await setStatus(runId, "context_stored", {
     eventType: "debug.captured",
     title: "Live debug capture stored",
-    detail: `${stored} artifact(s) · "${segment.symptomSeed}"`,
-    payload: { storedArtifacts: stored },
+    detail: `${stored} artifact(s), ${events.length} events · "${symptomSeed}"`,
+    payload: { storedArtifacts: stored, eventCount: events.length },
     actor: "recorder",
   });
 
-  return NextResponse.json({ storedArtifacts: stored, status: "stored" });
+  return NextResponse.json({ storedArtifacts: stored, eventCount: events.length, status: "stored" });
 }

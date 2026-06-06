@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
 import { diagnose } from "@/lib/diagnosis/diagnose";
-import { groundSymptom, groundingHint } from "@/lib/grounding/search";
+import { grepRepo, grepHint } from "@/lib/grounding/grep";
 import type { DispatchInput, Hypothesis, ReflexRunRow } from "@/lib/insforge/types";
 
 export const runtime = "nodejs";
@@ -51,10 +51,18 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
     return NextResponse.json({ error: "diagnosis failed" }, { status: 500 });
   }
 
-  // Ground the symptom in the indexed codebase (pgvector). Empty if the repo isn't indexed yet.
-  const grounded = await groundSymptom(run.repo_url, result.symptom);
-  const hint = groundingHint(grounded);
-  const groundingEvidence = grounded.map((g) => `code: ${g.filePath}:${g.startLine}-${g.endLine}`);
+  // Ground the symptom in the codebase by grepping the timeline anchors (route/label/error).
+  // More precise than symptom->code embeddings; falls back to symptom words if no timeline.
+  const obs = await dbSelect<{ visible_state: { anchors?: string[] } }>(
+    "observations",
+    `run_id=eq.${runId}&order=created_at.desc&limit=1`
+  );
+  const anchors = obs[0]?.visible_state?.anchors?.length
+    ? obs[0].visible_state.anchors
+    : result.symptom.split(/\s+/);
+  const grounded = await grepRepo(run.repo_url, anchors);
+  const hint = grepHint(grounded);
+  const groundingEvidence = grounded.map((g) => `code: ${g.filePath}:${g.line} (${g.anchor})`);
 
   const diag = await dbInsert<{ id: string }>("diagnoses", {
     run_id: runId,
