@@ -1,4 +1,4 @@
-// POST /api/slack/reflex-bug-mode — bug already exists in Slack context (shared-contracts §3).
+// POST /api/slack/reflex-report — bug already exists in Slack context (shared-contracts §3).
 // No typing required: defaults role=sales_csm, repo=DEFAULT_REPO, gather latest 100 msgs + 3 files.
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
@@ -27,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
 
   void run(channelId, commandText);
 
-  return Response.json({ response_type: 'ephemeral', text: '🟡 Reflex (bug mode) is gathering context…' });
+  return Response.json({ response_type: 'ephemeral', text: '🟡 Reflex (report) is gathering context…' });
 }
 
 async function run(channelId: string, commandText: string): Promise<void> {
@@ -45,7 +45,7 @@ async function run(channelId: string, commandText: string): Promise<void> {
   const { runId } = await createRun(input);
 
   // Root status message — updated in place as the run advances.
-  const root = await postMessage({ channel: channelId, text: 'Reflex (bug mode)', blocks: ackBlocks('bug', input.repoUrl) });
+  const root = await postMessage({ channel: channelId, text: 'Reflex (report)', blocks: ackBlocks('bug', input.repoUrl) });
 
   // Gather + store nearby context (best-effort; never block the draft on a bad fetch).
   let msgCount = 0, fileCount = 0;
@@ -59,7 +59,7 @@ async function run(channelId: string, commandText: string): Promise<void> {
 
   // Draft + post the confirmable report into the thread.
   const draft = await draftBugBrief(runId);
-  const contextLine = `Used /reflex-bug-mode, ${msgCount} channel messages, and ${fileCount} file${fileCount === 1 ? '' : 's'}`;
+  const contextLine = `Used /reflex-report, ${msgCount} channel messages, and ${fileCount} file${fileCount === 1 ? '' : 's'}`;
   await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Confirm the bug report', blocks: reportBlocks(draft, contextLine) });
 
   // Stream status into the root card; post a PR card on ship.

@@ -1,4 +1,4 @@
-// POST /api/slack/reflex-debug-mode — user is actively reproducing (shared-contracts §3).
+// POST /api/slack/reflex-record — user is actively reproducing (shared-contracts §3).
 // Slack can't capture screen/mic, so we return an Open Recorder link to the browser recorder;
 // after capture, Yash stores the debug artifacts and drafts the same report (same confirm flow).
 
@@ -26,7 +26,7 @@ export async function POST(req: Request): Promise<Response> {
 
   void run(channelId);
 
-  return Response.json({ response_type: 'ephemeral', text: '🎥 Reflex (debug mode) — opening a recorder for you…' });
+  return Response.json({ response_type: 'ephemeral', text: '🎥 Reflex (record) — opening a recorder for you…' });
 }
 
 async function run(channelId: string): Promise<void> {
@@ -46,5 +46,5 @@ async function run(channelId: string): Promise<void> {
 
   await postMessage({ channel: channelId, text: 'Open the Reflex recorder', blocks: recorderBlocks(runId, recorderUrl) });
   // After the browser recorder finishes, Yash stores the capture and drafts the report; the
-  // confirm flow + status thread are then identical to bug mode (handled via /events + interactions).
+  // confirm flow + status thread are then identical to report (handled via /events + interactions).
 }

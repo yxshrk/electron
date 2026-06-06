@@ -49,16 +49,16 @@ function context(markdown: string): Block {
 export function ackBlocks(mode: RunMode, repoUrl: string): Block[] {
   const repo = repoUrl.replace(/^https?:\/\/github\.com\//, '');
   return [
-    header(mode === 'bug' ? '🟡 Reflex — bug mode' : '🟡 Reflex — debug mode'),
+    header(mode === 'bug' ? '🟡 Reflex — report' : '🟡 Reflex — record'),
     section(`*Repo:* \`${repo}\``),
     context(mode === 'bug' ? 'Gathering channel context and drafting a report…' : 'Spin up the recorder to capture the issue…'),
   ];
 }
 
-/** Debug mode: a button linking to the browser recorder. */
+/** Record mode: a button linking to the browser recorder. */
 export function recorderBlocks(runId: string, recorderUrl: string): Block[] {
   return [
-    header('🎥 Reflex — debug mode'),
+    header('🎥 Reflex — record'),
     section('Record the issue in your browser (Slack can’t capture your screen). When you finish, Reflex drafts the report here.'),
     {
       type: 'actions',

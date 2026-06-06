@@ -27,8 +27,8 @@ console.log('\n# signature verify');
 
 console.log('\n# block builders');
 {
-  ok('bug ack header', JSON.stringify(ackBlocks('bug', 'https://github.com/x/y')).includes('bug mode'));
-  ok('debug ack header', JSON.stringify(ackBlocks('debug', 'https://github.com/x/y')).includes('debug mode'));
+  ok('bug ack header', JSON.stringify(ackBlocks('bug', 'https://github.com/x/y')).includes('report'));
+  ok('debug ack header', JSON.stringify(ackBlocks('debug', 'https://github.com/x/y')).includes('record'));
   ok('recorder has Open Recorder url button', JSON.stringify(recorderBlocks('run_1', 'https://app/debug/run_1')).includes('Open Recorder'));
 
   ok('timeline shows new stages', JSON.stringify(statusTimelineBlocks('dispatched')).includes('Agent dispatched'));
@@ -41,7 +41,7 @@ console.log('\n# block builders');
     whereItHappens: 'Reports page', actualBehavior: 'hangs', expectedBehavior: 'completes',
     affectedSurface: 'backend', evidenceSummary: [{ kind: 'channel_message', summary: 'x' }],
     missingInfo: ['dataset size'], agentPromptPreview: 'reproduce then fix',
-  }, 'Used /reflex-bug-mode, 8 channel messages, and 2 files');
+  }, 'Used /reflex-report, 8 channel messages, and 2 files');
   const r = JSON.stringify(report);
   ok('report has confirm action', r.includes('reflex_confirm'));
   ok('report has edit action', r.includes('reflex_edit'));

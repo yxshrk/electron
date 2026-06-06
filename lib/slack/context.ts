@@ -1,4 +1,4 @@
-// Gather nearby Slack context for /reflex-bug-mode: the latest N channel messages as raw
+// Gather nearby Slack context for /reflex-report: the latest N channel messages as raw
 // candidates + the latest few attachments. No LLM "+10 more" loop for the MVP (shared-contracts §3).
 
 import { conversationsHistory } from './client';
