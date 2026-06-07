@@ -5,13 +5,20 @@ import { verifySlackRequest } from '../../../../lib/slack/verify';
 import { ackBlocks, reportBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { gatherContext } from '../../../../lib/slack/context';
-import { createRun, postContext, draftBugBrief, subscribe, getDiagnosis } from '../../../../lib/slack/backend';
+import { createRun, postContext, draftBugBrief, mirrorEventsUntilTerminal, getDiagnosis } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 import { background } from '../../../../lib/slack/after';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // keep the status poll alive on Vercel (Fluid Compute)
 
+/**
+ * Handles Slack `/reflex-report` commands and starts the chat-history report workflow.
+ *
+ * @param req Signed Slack slash-command request.
+ * @returns Ephemeral acknowledgement for Slack.
+ * @sideEffects Verifies Slack signature and queues context gathering plus event mirroring.
+ */
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
   if (!verifySlackRequest({
@@ -32,6 +39,14 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({ response_type: 'ephemeral', text: '🟡 Reflex (report) is gathering context…' });
 }
 
+/**
+ * Creates the report run, drafts the confirmation card, and mirrors run events into Slack.
+ *
+ * @param channelId Slack channel ID where the command was invoked.
+ * @param commandText Slash command text used as the seed report.
+ * @returns Nothing after the run reaches a terminal status or the event mirror times out.
+ * @sideEffects Creates a Reflex run, stores Slack context, posts the report card, and updates Slack.
+ */
 async function run(channelId: string, commandText: string): Promise<void> {
   const input: RunCreateInput = {
     source: 'slack',
@@ -66,7 +81,7 @@ async function run(channelId: string, commandText: string): Promise<void> {
 
   // Stream status into the root card; post the Gate-2 approval card on diagnosed; PR card on ship.
   let dispatchPrompted = false;
-  const unsub = subscribe(runId, async (ev) => {
+  await mirrorEventsUntilTerminal(runId, async (ev) => {
     await updateMessage({ channel: root.channel, ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
     if (ev.status === 'diagnosed' && !dispatchPrompted) {
       dispatchPrompted = true;
@@ -76,7 +91,6 @@ async function run(channelId: string, commandText: string): Promise<void> {
     if (ev.status === 'shipped') {
       const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
       if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
-      unsub();
     }
   });
 }

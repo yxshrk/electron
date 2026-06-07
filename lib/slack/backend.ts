@@ -54,6 +54,8 @@ export interface DiagnosisSummary {
   hypotheses: Array<{ id: string; title: string; confidence?: number }>;
 }
 
+type RunEventHandler = (e: RunEvent) => void | Promise<void>;
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
@@ -185,7 +187,7 @@ export function dispatch(
  * @returns Unsubscribe function.
  * @sideEffects Uses mock listeners in mock mode; otherwise polls the run detail API.
  */
-export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => void {
+export function subscribe(runId: string, onEvent: RunEventHandler): () => void {
   if (useMock) return mock.subscribe(runId, onEvent);
 
   let closed = false;
@@ -194,6 +196,19 @@ export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => 
     if (!closed) console.error(error);
   });
   return () => { closed = true; };
+}
+
+/**
+ * Mirrors run events until a terminal run status or polling timeout.
+ *
+ * @param runId Reflex run ID.
+ * @param onEvent Callback invoked for each new run event.
+ * @returns Nothing after terminal status, polling timeout, or mock-mode listener setup.
+ * @sideEffects Polls the real run detail API and runs the callback for each unseen event.
+ */
+export function mirrorEventsUntilTerminal(runId: string, onEvent: RunEventHandler): Promise<void> {
+  if (useMock) return mock.mirrorEventsUntilTerminal(runId, onEvent);
+  return pollRunEvents(runId, new Set<string>(), onEvent, () => false);
 }
 
 export const isMock = useMock;
@@ -211,7 +226,7 @@ export const isMock = useMock;
 async function pollRunEvents(
   runId: string,
   seen: Set<string>,
-  onEvent: (e: RunEvent) => void,
+  onEvent: RunEventHandler,
   isClosed: () => boolean
 ): Promise<void> {
   for (let i = 0; i < MAX_POLLS && !isClosed(); i++) {
@@ -221,7 +236,7 @@ async function pollRunEvents(
       const key = row.id ?? `${event.eventType}:${event.createdAt ?? seen.size}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      onEvent(event);
+      await onEvent(event);
       if (event.status && TERMINAL_STATUSES.has(event.status)) return;
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
