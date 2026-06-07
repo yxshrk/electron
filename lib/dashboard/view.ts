@@ -73,6 +73,28 @@ export interface EvidenceCountSource {
   observation_count?: number;
 }
 
+export type DashboardRunFilter = 'all' | 'needs_confirmation' | 'diagnosed' | 'pr_opened' | 'failed';
+
+export interface DashboardRunFilterOption {
+  value: DashboardRunFilter;
+  label: string;
+}
+
+export interface DashboardFilterSource {
+  status: string;
+  diagnosis_state?: 'not_started' | 'diagnosed';
+  pr_url?: string | null;
+  started_by?: string | null;
+}
+
+export const DASHBOARD_RUN_FILTERS: DashboardRunFilterOption[] = [
+  { value: 'all', label: 'All' },
+  { value: 'needs_confirmation', label: 'Needs confirmation' },
+  { value: 'diagnosed', label: 'Diagnosed' },
+  { value: 'pr_opened', label: 'PR opened' },
+  { value: 'failed', label: 'Failed' },
+];
+
 /**
  * Counts all evidence-like items shown in the dashboard overview.
  *
@@ -111,6 +133,59 @@ export function actorLabel(actor?: string | null): string {
   if (!value) return 'unknown';
   if (/^U[A-Z0-9]+$/i.test(value)) return `Slack ${value}`;
   return value;
+}
+
+/**
+ * Parses a dashboard run filter query parameter.
+ *
+ * @param value Raw `view` search parameter.
+ * @returns Supported filter value, defaulting to `all`.
+ * @sideEffects None.
+ */
+export function parseDashboardRunFilter(value?: string | string[] | null): DashboardRunFilter {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return DASHBOARD_RUN_FILTERS.some((filter) => filter.value === raw) ? (raw as DashboardRunFilter) : 'all';
+}
+
+/**
+ * Filters dashboard runs for demo-focused queue views.
+ *
+ * @param runs Run rows from the dashboard read model.
+ * @param filter Selected status filter.
+ * @param owner Optional started-by actor filter.
+ * @returns Runs matching the selected queue and owner filters.
+ * @sideEffects None.
+ */
+export function filterDashboardRuns<T extends DashboardFilterSource>(
+  runs: T[],
+  filter: DashboardRunFilter,
+  owner?: string | null
+): T[] {
+  const ownerValue = owner?.trim();
+  return runs.filter((run) => {
+    if (ownerValue && (run.started_by ?? '') !== ownerValue) return false;
+    if (filter === 'all') return true;
+    if (filter === 'needs_confirmation') return ['clarifying', 'report_drafted'].includes(run.status);
+    if (filter === 'diagnosed') return run.status === 'diagnosed';
+    if (filter === 'pr_opened') return Boolean(run.pr_url) || run.status === 'shipped';
+    return run.status.includes('failed');
+  });
+}
+
+/**
+ * Returns distinct run owner values in first-seen order.
+ *
+ * @param runs Run rows from the dashboard read model.
+ * @returns Non-empty owner actor IDs or names.
+ * @sideEffects None.
+ */
+export function dashboardOwners(runs: DashboardFilterSource[]): string[] {
+  const owners = new Set<string>();
+  for (const run of runs) {
+    const owner = run.started_by?.trim();
+    if (owner) owners.add(owner);
+  }
+  return [...owners];
 }
 
 /**

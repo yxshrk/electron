@@ -1,5 +1,17 @@
 import { getDashboardRuns } from '@/lib/dashboard/read-model';
-import { actorLabel, evidenceLabel, evidenceTotalCount, formatDate, statusLabel, statusTone } from '@/lib/dashboard/view';
+import {
+  actorLabel,
+  DASHBOARD_RUN_FILTERS,
+  dashboardOwners,
+  evidenceLabel,
+  evidenceTotalCount,
+  filterDashboardRuns,
+  formatDate,
+  parseDashboardRunFilter,
+  statusLabel,
+  statusTone,
+  type DashboardRunFilter
+} from '@/lib/dashboard/view';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -7,14 +19,23 @@ export const runtime = 'nodejs';
 /**
  * Renders the top-level Reflex dashboard run list.
  *
+ * @param props Search parameters used to filter the diagnosis queue.
  * @returns Server-rendered table of Reflex runs with source metadata.
  * @sideEffects Reads from InsForge when backend credentials are configured.
  */
-export default async function Dashboard() {
+export default async function Dashboard({
+  searchParams
+}: {
+  searchParams?: { view?: string; owner?: string };
+}) {
   const { runs, source, error } = await getDashboardRuns();
-  const diagnosedRuns = runs.filter((run) => run.diagnosis_state === 'diagnosed').length;
-  const evidenceCount = runs.reduce((total, run) => total + evidenceTotalCount(run), 0);
-  const prCount = runs.filter((run) => Boolean(run.pr_url)).length;
+  const activeFilter = parseDashboardRunFilter(searchParams?.view);
+  const ownerOptions = dashboardOwners(runs);
+  const activeOwner = ownerOptions.includes(searchParams?.owner ?? '') ? searchParams?.owner : undefined;
+  const filteredRuns = filterDashboardRuns(runs, activeFilter, activeOwner);
+  const diagnosedRuns = filteredRuns.filter((run) => run.diagnosis_state === 'diagnosed').length;
+  const evidenceCount = filteredRuns.reduce((total, run) => total + evidenceTotalCount(run), 0);
+  const prCount = filteredRuns.filter((run) => Boolean(run.pr_url)).length;
 
   return (
     <>
@@ -34,8 +55,8 @@ export default async function Dashboard() {
       <div className="metric-grid">
         <div className="metric-card">
           <span className="metric-label">Runs</span>
-          <strong>{runs.length}</strong>
-          <span className="metric-note">latest 100</span>
+          <strong>{filteredRuns.length}</strong>
+          <span className="metric-note">{filteredRuns.length === runs.length ? 'latest 100' : `filtered from ${runs.length}`}</span>
         </div>
         <div className="metric-card">
           <span className="metric-label">Diagnosed</span>
@@ -64,13 +85,54 @@ export default async function Dashboard() {
         <div className="section-heading">
           <div>
             <h2>Diagnosis queue</h2>
-            <p className="muted">Click a row to inspect the report, context, attachments, hypotheses, and proof.</p>
+            <p className="muted">Filter the queue, then click a row to inspect the report, context, attachments, hypotheses, and proof.</p>
           </div>
+        </div>
+        <div className="filter-bar" aria-label="Dashboard filters">
+          <div className="filter-group">
+            {DASHBOARD_RUN_FILTERS.map((filter) => (
+              <a
+                aria-current={activeFilter === filter.value ? 'page' : undefined}
+                className={`filter-chip ${activeFilter === filter.value ? 'active' : ''}`}
+                href={dashboardHref(filter.value, activeOwner)}
+                key={filter.value}
+              >
+                {filter.label}
+              </a>
+            ))}
+          </div>
+          {ownerOptions.length > 0 && (
+            <div className="filter-group owner-filter" aria-label="Owner filters">
+              <span className="filter-label">Owner</span>
+              <a
+                aria-current={!activeOwner ? 'page' : undefined}
+                className={`filter-chip ${!activeOwner ? 'active' : ''}`}
+                href={dashboardHref(activeFilter)}
+              >
+                All
+              </a>
+              {ownerOptions.map((owner) => (
+                <a
+                  aria-current={activeOwner === owner ? 'page' : undefined}
+                  className={`filter-chip ${activeOwner === owner ? 'active' : ''}`}
+                  href={dashboardHref(activeFilter, owner)}
+                  key={owner}
+                >
+                  {actorLabel(owner)}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
         {runs.length === 0 ? (
           <div className="empty-state">
             <strong>No runs yet</strong>
             <p className="muted">Start from Slack or the recorder, then this page becomes the judge-facing data view.</p>
+          </div>
+        ) : filteredRuns.length === 0 ? (
+          <div className="empty-state">
+            <strong>No runs match this filter</strong>
+            <p className="muted">Switch back to All to see the full queue.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -88,7 +150,7 @@ export default async function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {runs.map((run) => (
+                {filteredRuns.map((run) => (
                   <tr key={run.id}>
                     <td>
                       <a className="row-link" href={`/dashboard/${run.id}`}>
@@ -118,4 +180,20 @@ export default async function Dashboard() {
       </section>
     </>
   );
+}
+
+/**
+ * Builds a dashboard link for the selected queue and owner filters.
+ *
+ * @param view Queue filter value.
+ * @param owner Optional owner actor filter.
+ * @returns Dashboard URL with compact query parameters.
+ * @sideEffects None.
+ */
+function dashboardHref(view: DashboardRunFilter, owner?: string | null): string {
+  const params = new URLSearchParams();
+  if (view !== 'all') params.set('view', view);
+  if (owner) params.set('owner', owner);
+  const query = params.toString();
+  return query ? `/dashboard?${query}` : '/dashboard';
 }
