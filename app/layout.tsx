@@ -18,10 +18,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <header className="topbar">
-          <a className="brand" href="/">Reflex</a>
-          <nav>
-            <a href="/dashboard">Dashboard</a>
-          </nav>
+          <div className="topbar-inner">
+            <a className="brand" href="/">Reflex</a>
+            <nav>
+              <a href="/dashboard">Dashboard</a>
+            </nav>
+          </div>
         </header>
         <main className="container">{children}</main>
       </body>
