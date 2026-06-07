@@ -5,9 +5,11 @@ import { verifySlackRequest } from '../../../../lib/slack/verify';
 import { openModal, postMessage, updateMessage } from '../../../../lib/slack/client';
 import { dispatchStartedBlocks, editModal } from '../../../../lib/slack/blocks';
 import { confirmBugBrief, dispatch, getDraft } from '../../../../lib/slack/backend';
+import { background } from '../../../../lib/slack/after';
 import type { ConfirmInput } from '../../../../lib/slack/contracts';
 
 export const runtime = 'nodejs';
+export const maxDuration = 300; // confirm cascades diagnose server-side; keep alive on Vercel
 
 /**
  * Handles Slack block actions and edit modal submissions.
@@ -92,9 +94,7 @@ export async function POST(req: Request): Promise<Response> {
  * @sideEffects Calls Yash's confirm and diagnose APIs in the background.
  */
 function confirmInBackground(runId: string, input: ConfirmInput = {}): void {
-  void confirmBugBrief(runId, input).catch((error) => {
-    console.error('Reflex confirmation failed', error);
-  });
+  background(confirmBugBrief(runId, input));
 }
 
 /**
@@ -105,9 +105,7 @@ function confirmInBackground(runId: string, input: ConfirmInput = {}): void {
  * @sideEffects Calls Yash's /dispatch orchestrator (→ Replicas / scripted fallback → PR).
  */
 function dispatchInBackground(runId: string): void {
-  void dispatch(runId, { createPr: true }).catch((error) => {
-    console.error('Reflex dispatch failed', error);
-  });
+  background(dispatch(runId, { createPr: true }));
 }
 
 /**
