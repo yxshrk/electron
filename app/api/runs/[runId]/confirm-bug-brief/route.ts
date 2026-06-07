@@ -40,6 +40,24 @@ export async function POST(req: NextRequest, { params }: { params: { runId: stri
   const run = await getRun<ReflexRunRow>(runId);
   if (!run) return NextResponse.json({ error: "run not found" }, { status: 404 });
 
+  // Idempotency: a second Confirm (double-click / Slack action retry) must not create duplicate
+  // intake packages, diagnoses, hypotheses, or timeline events. If this run already has a confirmed
+  // intake package, return it as a no-op — the first Confirm already ran the diagnose→dispatch
+  // cascade (mirrors the guard on /dispatch).
+  const existing = await dbSelect<{ id: string; bug_brief_id: string }>(
+    "intake_packages",
+    `run_id=eq.${runId}&status=eq.confirmed&order=created_at.desc&limit=1`
+  );
+  if (existing[0]) {
+    return NextResponse.json({
+      runId,
+      intakePackageId: existing[0].id,
+      bugBriefId: existing[0].bug_brief_id,
+      status: "confirmed",
+      idempotent: true,
+    });
+  }
+
   const body = ((await req.json().catch(() => ({}))) ?? {}) as ConfirmBody;
 
   // Resolve the brief (explicit id, else the latest needs_confirmation draft).
