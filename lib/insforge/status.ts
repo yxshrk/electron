@@ -1,6 +1,7 @@
 // State-machine helpers. Every status change writes reflex_runs.status AND appends a
 // run_events row so Slack + the dashboard render a full timeline (shared-contracts section 2, C6).
 import { dbInsert, dbUpdate } from "./db";
+import { pushGateCard } from "@/lib/slack/push";
 import type { RunStatus, RunEventInput } from "./types";
 
 const TERMINAL: RunStatus[] = ["shipped"];
@@ -43,4 +44,13 @@ export async function setStatus(
   if (TERMINAL.includes(status)) patch.completed_at = new Date().toISOString();
   await dbUpdate("reflex_runs", `id=eq.${runId}`, patch);
   await addEvent(runId, { ...event, status });
+
+  // Push the actionable Slack card for this transition (Confirm / Approve-&-dispatch / PR) from the
+  // server, so it survives the in-process mirror poll dying or timing out. No-op for non-gate
+  // statuses, non-Slack runs, or cards already posted. Never let Slack break the status write.
+  try {
+    await pushGateCard(runId, status, event);
+  } catch (error) {
+    console.error("slack gate-card push failed", error);
+  }
 }

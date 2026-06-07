@@ -4,9 +4,9 @@
 // job here is just to mirror the run status into the thread (Yash PR #8 wiring note).
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { recorderBlocks, blocksForEvent, dispatchPromptBlocks, reportBlocks } from '../../../../lib/slack/blocks';
+import { recorderBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
-import { createRun, mirrorEventsUntilTerminal, getDiagnosis, getDraft } from '../../../../lib/slack/backend';
+import { createRun, mirrorEventsUntilTerminal, persistSlackThread } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 import { background } from '../../../../lib/slack/after';
 
@@ -67,35 +67,20 @@ async function run(channelId: string, userId?: string): Promise<void> {
 
   const root = await postMessage({ channel: channelId, text: 'Open the Reflex recorder', blocks: recorderBlocks(runId, recorderUrl) });
 
-  // Mirror the recorder-driven pipeline into the thread. The recorder page owns capture → draft;
-  // Slack confirm starts diagnose + dispatch. Here we just render status from Yash's /events (SSE). Yash persists our
-  // channel/thread, so a deploy could also push these — for now we subscribe in-process.
+  // Persist the thread root so the backend can push the Confirm / Approve-&-dispatch / PR cards
+  // straight into this thread from setStatus (lib/slack/push) — those survive even if the mirror
+  // poll below dies (Next dev teardown) or times out before the agent ships its PR.
+  await persistSlackThread(runId, root.channel, root.ts).catch(() => { /* push falls back to a channel post */ });
+
+  // Animate the live timeline only. The actionable cards are server-pushed (see above); keeping
+  // them out of this poll means a dead/timed-out poll can no longer drop them.
   let timelineTs: string | undefined;
-  let reportPrompted = false;
-  let dispatchPrompted = false;
   await mirrorEventsUntilTerminal(runId, async (ev) => {
     if (!timelineTs) {
       const m = await postMessage({ channel: root.channel, thread_ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
       timelineTs = m.ts;
     } else {
       await updateMessage({ channel: root.channel, ts: timelineTs, text: ev.title, blocks: blocksForEvent(ev) });
-    }
-    // Gate 1: the recorder is capture-only — it drafts the report, then sends the user here to
-    // confirm. Post the same Confirm/Edit card the report flow uses so there's something to click
-    // (the recorder's "confirm in your Slack thread" instruction would otherwise be a dead end).
-    if (ev.status === 'report_drafted' && !reportPrompted) {
-      reportPrompted = true;
-      const draft = await getDraft(runId).catch(() => undefined);
-      if (draft) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Confirm the bug report', blocks: reportBlocks(draft, 'Captured live via the Reflex recorder') });
-    }
-    if (ev.status === 'diagnosed' && !dispatchPrompted) {
-      dispatchPrompted = true;
-      const diag = await getDiagnosis(runId).catch(() => ({ hypotheses: [] }));
-      await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Diagnosis ready — approve the fix?', blocks: dispatchPromptBlocks(runId, diag) });
-    }
-    if (ev.status === 'shipped') {
-      const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
-      if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
     }
   });
 }
