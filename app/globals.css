@@ -45,6 +45,48 @@ body {
 
 .container { max-width: 1180px; margin: 0 auto; padding: 28px 20px 80px; }
 
+.dashboard-shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.dashboard-main { min-width: 0; }
+.sidebar {
+  position: sticky;
+  top: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.sidebar-eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
+.sidebar-link {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: none;
+}
+.sidebar-link:hover { color: var(--text); background: var(--soft); }
+
+@media (max-width: 900px) {
+  .dashboard-shell { grid-template-columns: 1fr; gap: 16px; }
+  .sidebar { position: static; }
+}
+
 .page-title {
   display: flex;
   align-items: flex-start;
