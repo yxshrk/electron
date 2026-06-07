@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   actorLabel,
+  dashboardOwners,
   evidenceLabel,
   evidenceTotalCount,
+  filterDashboardRuns,
+  parseDashboardRunFilter,
   prettyJson,
   stageState,
   statusLabel,
@@ -39,4 +42,21 @@ test('dashboard actor label distinguishes Slack starters', () => {
   assert.equal(actorLabel('U123ABC'), 'Slack U123ABC');
   assert.equal(actorLabel('web'), 'web');
   assert.equal(actorLabel(null), 'unknown');
+});
+
+test('dashboard filters queue views and owners', () => {
+  const runs = [
+    { status: 'report_drafted', started_by: 'U1', diagnosis_state: 'not_started' as const, pr_url: null },
+    { status: 'diagnosed', started_by: 'U2', diagnosis_state: 'diagnosed' as const, pr_url: null },
+    { status: 'shipped', started_by: 'U1', diagnosis_state: 'diagnosed' as const, pr_url: 'https://github.com/yxshrk/electron/pull/1' },
+    { status: 'dispatch_failed', started_by: 'U3', diagnosis_state: 'diagnosed' as const, pr_url: null },
+  ];
+
+  assert.equal(parseDashboardRunFilter('missing'), 'all');
+  assert.deepEqual(dashboardOwners(runs), ['U1', 'U2', 'U3']);
+  assert.equal(filterDashboardRuns(runs, 'needs_confirmation').length, 1);
+  assert.equal(filterDashboardRuns(runs, 'diagnosed').length, 1);
+  assert.equal(filterDashboardRuns(runs, 'pr_opened').length, 1);
+  assert.equal(filterDashboardRuns(runs, 'failed').length, 1);
+  assert.equal(filterDashboardRuns(runs, 'all', 'U1').length, 2);
 });
