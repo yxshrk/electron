@@ -168,6 +168,7 @@ video { width: 100%; border-radius: 8px; border: 1px solid var(--border); backgr
 
 .table-wrap { width: 100%; overflow-x: auto; }
 .run-table td:first-child { min-width: 320px; }
+.run-table tbody tr:hover { background: var(--soft); }
 .row-link {
   display: flex;
   flex-direction: column;
@@ -340,7 +341,15 @@ video { width: 100%; border-radius: 8px; border: 1px solid var(--border); backgr
 
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-th { color: var(--muted); font-weight: 500; }
+th {
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border);
+}
 a.link { color: var(--accent); }
 code { background: var(--soft); padding: 1px 5px; border-radius: 5px; font-size: 13px; }
 pre { background: var(--soft); padding: 12px; border-radius: 8px; overflow: auto; font-size: 12.5px; white-space: pre-wrap; }
