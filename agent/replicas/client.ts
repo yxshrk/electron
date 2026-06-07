@@ -44,7 +44,12 @@ export async function createReplicasTask(
       name: buildReplicasTaskName(input).replace(/\s+/g, '-'),
       message: prompt,
       coding_agent: 'claude',
-      lifecycle_policy: 'delete_when_done'
+      lifecycle_policy: 'delete_when_done',
+      // Closes the loop: Replicas calls this when the agent finishes → we persist shipped + PR.
+      // The runId is encoded in `name`, so the webhook can map back to the run.
+      ...(process.env.NEXT_PUBLIC_APP_URL
+        ? { webhook_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/replicas/webhook` }
+        : {})
     })
   });
 
