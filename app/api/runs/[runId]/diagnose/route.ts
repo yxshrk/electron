@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbInsert, dbSelect, getRun } from "@/lib/insforge/db";
 import { setStatus } from "@/lib/insforge/status";
-import { diagnose } from "@/lib/diagnosis/diagnose";
+import { diagnoseWithLLM } from "@/lib/diagnosis/diagnose";
 import { grepRepo, grepHint } from "@/lib/grounding/grep";
 import type { DispatchInput, Hypothesis, ReflexRunRow } from "@/lib/insforge/types";
 
@@ -17,6 +17,14 @@ interface IntakePackageRow {
   status: string;
 }
 
+/**
+ * Generates diagnosis hypotheses from a confirmed intake package.
+ *
+ * @param _req Unused request body.
+ * @param params Dynamic route params containing the run ID.
+ * @returns Diagnosis plus dispatch input candidates.
+ * @sideEffects Calls the LLM diagnosis path, writes diagnoses/hypotheses, grounds code hints, and updates run status.
+ */
 export async function POST(_req: NextRequest, { params }: { params: { runId: string } }) {
   const { runId } = params;
   const run = await getRun<ReflexRunRow>(runId);
@@ -41,7 +49,7 @@ export async function POST(_req: NextRequest, { params }: { params: { runId: str
 
   let result;
   try {
-    result = diagnose({ role: run.role, symptomSeed, confirmedReport: pkg.confirmed_report });
+    result = await diagnoseWithLLM({ role: run.role, symptomSeed, confirmedReport: pkg.confirmed_report });
   } catch (e) {
     await setStatus(runId, "diagnosis_failed", {
       eventType: "diagnosis.failed",

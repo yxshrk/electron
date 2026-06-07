@@ -67,7 +67,7 @@ Do not add MySQL or Supabase for the MVP. InsForge Postgres is the database, and
 | Database | InsForge Postgres | Runs, observations, diagnoses, hypotheses, agent runs, PR metadata |
 | File storage | InsForge Storage | Screenshots, videos, recordings, logs, reproduction evidence |
 | Live updates | Slack thread updates | Show observe, diagnose, dispatch, reproduce, fix, and ship status |
-| AI/model access | InsForge Model Gateway or direct model API | Draft bug report and generate diagnosis JSON |
+| AI/model access | InsForge-provisioned OpenRouter key or direct model API | Draft bug report and generate diagnosis JSON |
 | Agent execution | Replicas | Run sandboxed background coding tasks and produce fix evidence |
 | PR output | GitHub API | Create branches, commits, and pull requests |
 | Demo visibility UI | Vercel / Next.js | Tiny read-only `/dashboard` and `/dashboard/{runId}` pages for judges |
@@ -490,7 +490,7 @@ Responsibilities:
 - Store screenshot, video, recording, log, and reproduction artifacts in Storage.
 - Publish pipeline status changes through Realtime, or support simple polling from the UI.
 - Provide optional auth if the demo needs user identity.
-- Provide optional model gateway access for diagnosis generation.
+- Provision `OPENROUTER_API_KEY` for LLM-generated report drafting and diagnosis.
 - Maintain the symptom-resolution memory graph as a future product feature.
 
 Implementation setup:
@@ -1406,6 +1406,14 @@ Prompt templates are part of the technical contract. Keep them deterministic, sh
 the confirmed data stored in InsForge. The implementation should keep these templates in code as
 versioned constants, for example `lib/diagnosis/prompts.ts` and `agent/replicas/prompt.ts`.
 
+Runtime model config:
+
+- `OPENROUTER_API_KEY` enables the LLM path. InsForge can provision it with `npx @insforge/cli ai setup`.
+- `REFLEX_TEXT_MODEL` sets the default text model. The current default is `openai/gpt-4o-mini`.
+- `REFLEX_REPORT_MODEL` optionally overrides only bug report drafting.
+- `REFLEX_DIAGNOSIS_MODEL` optionally overrides only diagnosis generation.
+- If the key is missing or the model call fails, Reflex uses the scripted export-hang fallback so the demo spine can still run.
+
 Shared prompt rules:
 
 - Do not invent evidence. If a field is unknown, use `missingInfo`.
@@ -1895,6 +1903,7 @@ P0 required:
 
 - Seeded bug in `https://github.com/yxshrk/electron`: export-hang bug, seeded large dataset, failing repro command or test, known minimal fix, verification command, scripted fallback PR path.
 - InsForge setup: migration applied, `reflex-evidence` storage bucket created, `INSFORGE_PROJECT_URL` and `INSFORGE_SERVICE_KEY` configured.
+- Model setup: `OPENROUTER_API_KEY` configured through InsForge or directly, with optional `REFLEX_REPORT_MODEL` and `REFLEX_DIAGNOSIS_MODEL` overrides.
 - Slack app: `/reflex-report`, `/reflex-record`, Confirm/Edit/Add Attachment interactions, bot token, signing secret, latest 100 message fetch, latest 3 attachment fetch.
 - Core API routes: `POST /api/runs`, context/media/debug capture ingest, draft bug brief, confirm bug brief, intake package, diagnose, dispatch Replicas or scripted fallback, Replicas callback.
 - Prompt templates in code: bug report draft prompt, diagnosis prompt, Replicas agent prompt, PR body template.
@@ -1918,7 +1927,7 @@ seeded bug + scripted fallback PR
 -> /api/runs + run_events
 -> /reflex-report
 -> draft/confirm report
--> deterministic diagnosis fixture
+-> LLM report + diagnosis JSON
 -> scripted fallback opens PR
 -> dashboard detail page
 -> rehearse 3 times
@@ -1934,7 +1943,10 @@ SLACK_SIGNING_SECRET=
 SLACK_BOT_TOKEN=
 GITHUB_TOKEN=
 DEFAULT_GITHUB_REPO=https://github.com/yxshrk/electron
-MODEL_API_KEY=
+OPENROUTER_API_KEY=
+REFLEX_TEXT_MODEL=openai/gpt-4o-mini
+REFLEX_REPORT_MODEL=
+REFLEX_DIAGNOSIS_MODEL=
 REPLICAS_API_KEY=
 REPLICAS_ENVIRONMENT_ID=
 REPLICAS_WEBHOOK_SECRET=
