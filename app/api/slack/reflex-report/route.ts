@@ -2,10 +2,10 @@
 // No typing required: defaults role=sales_csm, repo=DEFAULT_REPO, gather latest 100 msgs + 3 files.
 
 import { verifySlackRequest } from '../../../../lib/slack/verify';
-import { ackBlocks, reportBlocks, blocksForEvent, dispatchPromptBlocks } from '../../../../lib/slack/blocks';
+import { ackBlocks, reportBlocks, blocksForEvent } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
 import { gatherContext } from '../../../../lib/slack/context';
-import { createRun, postContext, draftBugBrief, mirrorEventsUntilTerminal, getDiagnosis } from '../../../../lib/slack/backend';
+import { createRun, postContext, draftBugBrief, mirrorEventsUntilTerminal, persistSlackThread } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 import { background } from '../../../../lib/slack/after';
 
@@ -67,6 +67,11 @@ async function run(channelId: string, commandText: string, userId?: string): Pro
   // Root status message — updated in place as the run advances.
   const root = await postMessage({ channel: channelId, text: 'Reflex (report)', blocks: ackBlocks('bug', input.repoUrl) });
 
+  // Persist the thread root so the backend can push the Approve-&-dispatch + PR cards into this
+  // thread from setStatus (lib/slack/push) — those survive the mirror poll timing out before the
+  // Replicas webhook ships the PR (minutes later).
+  await persistSlackThread(runId, root.channel, root.ts).catch(() => { /* push falls back to a channel post */ });
+
   // Gather + store nearby context (best-effort; never block the draft on a bad fetch).
   let msgCount = 0, fileCount = 0;
   try {
@@ -82,18 +87,9 @@ async function run(channelId: string, commandText: string, userId?: string): Pro
   const contextLine = `Used /reflex-report, ${msgCount} channel messages, and ${fileCount} file${fileCount === 1 ? '' : 's'}`;
   await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Confirm the bug report', blocks: reportBlocks(draft, contextLine) });
 
-  // Stream status into the root card; post the Gate-2 approval card on diagnosed; PR card on ship.
-  let dispatchPrompted = false;
+  // Animate the root status card only. The Approve-&-dispatch and PR cards are server-pushed by
+  // setStatus (lib/slack/push) so they survive this poll timing out before the agent ships its PR.
   await mirrorEventsUntilTerminal(runId, async (ev) => {
     await updateMessage({ channel: root.channel, ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
-    if (ev.status === 'diagnosed' && !dispatchPrompted) {
-      dispatchPrompted = true;
-      const diag = await getDiagnosis(runId).catch(() => ({ hypotheses: [] }));
-      await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'Diagnosis ready — approve the fix?', blocks: dispatchPromptBlocks(runId, diag) });
-    }
-    if (ev.status === 'shipped') {
-      const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
-      if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
-    }
   });
 }

@@ -84,6 +84,21 @@ export function createRun(input: RunCreateInput): Promise<RunCreateResponse> {
   return useMock ? mock.createRun(input) : post('/api/runs', input);
 }
 
+/**
+ * Persist the Slack channel + thread root so the backend can push cards (Confirm / Approve / PR)
+ * straight into the thread, independent of this process's mirror poll. Best-effort.
+ *
+ * @param runId Reflex run ID.
+ * @param channel Slack channel ID of the thread root.
+ * @param threadTs Timestamp of the thread root message.
+ * @returns Acknowledgement; a no-op in mock mode.
+ * @sideEffects Writes slack_channel_id / slack_thread_ts on the run when mock mode is disabled.
+ */
+export function persistSlackThread(runId: string, channel: string, threadTs: string): Promise<unknown> {
+  if (useMock) return Promise.resolve({ ok: true });
+  return post(`/api/runs/${runId}/slack-thread`, { channel, threadTs });
+}
+
 /** Store copied Slack context candidates. Yash's /context takes { messages } only (PR #8). */
 export function postContext(runId: string, messages: SlackContextCandidate[]): Promise<{ ok: true }> {
   return useMock ? mock.postContext(runId, messages) : post(`/api/runs/${runId}/context`, { messages });
