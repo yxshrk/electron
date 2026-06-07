@@ -49,7 +49,7 @@ npm run test:slack      # 26 assertions: verify, blocks, mock createRunâ†’draftâ
 
 ## Integration (testing against Yash's real backend)
 1. Merge this slice + Yash's PR #8 into one branch (so `/debug` page, `/api/runs/*`, `lib/insforge` exist).
-2. Set InsForge env (`INSFORGE_PROJECT_URL`, `INSFORGE_SERVICE_KEY`, `MODEL_API_KEY`) + `REFLEX_BACKEND` to hit the real routes, and `NEXT_PUBLIC_APP_URL` = the public tunnel/deploy URL (so the recorder link isn't localhost).
+2. Set InsForge env (`INSFORGE_PROJECT_URL`, `INSFORGE_SERVICE_KEY`, `OPENROUTER_API_KEY`) + `REFLEX_BACKEND` to hit the real routes, and `NEXT_PUBLIC_APP_URL` = the public tunnel/deploy URL (so the recorder link isn't localhost).
 3. Then both report and record modes run end-to-end against InsForge.
 
 ## Notes

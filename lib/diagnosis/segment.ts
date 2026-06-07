@@ -1,7 +1,7 @@
 // "Segment" step: turn raw debug-capture evidence (transcript, notes, frame count) into a
 // compact visible_state + evidence summary that the report/diagnosis steps consume.
 // Deterministic by design (shared-contracts: the live stage must not depend on prompt drift).
-// A model path can replace this later via MODEL_API_KEY without changing the interface.
+// A model path can replace this later via OPENROUTER_API_KEY without changing the interface.
 import type { EvidenceSummaryItem } from "@/lib/insforge/types";
 
 export interface DebugCaptureInput {

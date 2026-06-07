@@ -13,7 +13,7 @@ path.
 -> generated bug report
 -> user confirms in Slack
 -> confirmed intake package
--> diagnosis + hypotheses
+-> LLM diagnosis + hypotheses
 -> scripted fallback or Replicas
 -> GitHub PR
 -> Slack thread + /dashboard/{runId}
@@ -39,7 +39,7 @@ Build in this order so the team always has a demoable spine:
 3. Implement `POST /api/runs` and append-only `run_events`.
 4. Implement `/reflex-report` with fixed Slack context fetch.
 5. Draft the bug report and show Confirm/Edit/Add Attachment in Slack.
-6. Add deterministic diagnosis fixture for the seeded export-hang bug.
+6. Configure model access and generate the report/diagnosis JSON through the LLM path.
 7. Dispatch the scripted fallback or Replicas and open a PR.
 8. Add `/dashboard/{runId}` so judges can inspect stored evidence.
 9. Add `/dashboard` run list.
@@ -71,14 +71,19 @@ SLACK_SIGNING_SECRET=
 SLACK_BOT_TOKEN=
 GITHUB_TOKEN=
 DEFAULT_GITHUB_REPO=https://github.com/yxshrk/electron
-MODEL_API_KEY=
+OPENROUTER_API_KEY=
+REFLEX_TEXT_MODEL=openai/gpt-4o-mini
+REFLEX_REPORT_MODEL=
+REFLEX_DIAGNOSIS_MODEL=
 REPLICAS_API_KEY=
 REPLICAS_ENVIRONMENT_ID=
 REPLICAS_WEBHOOK_SECRET=
 ```
 
 For the first demo, `REPLICAS_API_KEY`, `REPLICAS_ENVIRONMENT_ID`, and `REPLICAS_WEBHOOK_SECRET`
-can be empty if the scripted fallback path is working.
+can be empty if the scripted fallback path is working. `OPENROUTER_API_KEY` should be present so
+report drafting and diagnosis are model-generated; without it, Reflex intentionally falls back to the
+scripted export-hang path.
 
 ## InsForge Setup
 

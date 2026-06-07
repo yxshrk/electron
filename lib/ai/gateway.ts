@@ -5,6 +5,7 @@
 const BASE = "https://openrouter.ai/api/v1";
 
 export const VISION_MODEL = process.env.REFLEX_VISION_MODEL || "openai/gpt-4o-mini";
+export const TEXT_MODEL = process.env.REFLEX_TEXT_MODEL || "openai/gpt-4o-mini";
 export const EMBED_MODEL = process.env.REFLEX_EMBED_MODEL || "openai/text-embedding-3-small";
 export const EMBED_DIMS = 1536;
 

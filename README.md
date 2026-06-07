@@ -70,7 +70,7 @@ Ninety seconds, complaint to merged fix. **The kicker:** re-tag the same screen 
 ## Build / fake / name tiering (the cut lines)
 
 - **Build (real, non-negotiable):** the diagnosis → hypothesis → sandbox-reproduction → PR pipeline on a seeded repo. This must genuinely run.
-- **Fake (scripted but live-looking):** screen capture + voice on rehearsed inputs; pre-indexed repo; pre-warmed sandboxes.
+- **Fake (scripted but live-looking):** screen capture + voice on rehearsed inputs; pre-indexed repo; pre-warmed sandboxes. Report drafting and diagnosis still use the LLM path when `OPENROUTER_API_KEY` is configured; scripted output is only the no-key backup.
 - **Name (talked about, not built):** continuous always-on watching, the InsForge symptom-memory getting smarter over time, Limrun mobile path, multi-tenant. Say it's the roadmap; don't build it today.
 
 **Hard cut line if wifi dies:** reveal a pre-computed run instead of live execution. Never bet the demo on live sandbox spin-up over conference wifi.
@@ -89,6 +89,7 @@ P0 required for the demo:
   Confirm/Edit/Add Attachment actions.
 - Core run APIs for context/media ingest, bug report draft, confirmation, intake package, diagnosis,
   dispatch, and callback.
+- OpenRouter model access provisioned through InsForge for LLM-generated bug reports and diagnosis.
 - Prompt templates for bug report draft, diagnosis, Replicas dispatch, and PR body.
 - Tiny read-only dashboard: `/dashboard` and `/dashboard/{runId}`.
 
