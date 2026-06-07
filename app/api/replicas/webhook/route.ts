@@ -28,7 +28,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const base = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
     // Persist needs a real hypothesis_id — reuse the run's top diagnosed hypothesis.
     const detail = await fetch(`${base}/api/runs/${runId}`, { cache: 'no-store' }).then((r) => r.json()).catch(() => ({}));
     const hypothesisId = detail?.hypotheses?.[0]?.id ?? 'replicas';
