@@ -6,13 +6,20 @@
 import { verifySlackRequest } from '../../../../lib/slack/verify';
 import { recorderBlocks, blocksForEvent, dispatchPromptBlocks, reportBlocks } from '../../../../lib/slack/blocks';
 import { postMessage, updateMessage } from '../../../../lib/slack/client';
-import { createRun, subscribe, getDiagnosis, getDraft } from '../../../../lib/slack/backend';
+import { createRun, mirrorEventsUntilTerminal, getDiagnosis, getDraft } from '../../../../lib/slack/backend';
 import { DEFAULT_REPO, DEFAULT_CONTEXT_WINDOW, type RunCreateInput } from '../../../../lib/slack/contracts';
 import { background } from '../../../../lib/slack/after';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // keep the status poll alive on Vercel (Fluid Compute)
 
+/**
+ * Handles Slack `/reflex-record` commands and starts the recorder workflow.
+ *
+ * @param req Signed Slack slash-command request.
+ * @returns Ephemeral acknowledgement for Slack.
+ * @sideEffects Verifies Slack signature and queues run creation plus event mirroring.
+ */
 export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
   if (!verifySlackRequest({
@@ -32,6 +39,13 @@ export async function POST(req: Request): Promise<Response> {
   return Response.json({ response_type: 'ephemeral', text: '🎥 Reflex (record) — opening a recorder for you…' });
 }
 
+/**
+ * Creates the recording run and mirrors run events into its Slack thread.
+ *
+ * @param channelId Slack channel ID where the command was invoked.
+ * @returns Nothing after the run reaches a terminal status or the event mirror times out.
+ * @sideEffects Creates a Reflex run, posts a recorder card, and posts/updates Slack thread messages.
+ */
 async function run(channelId: string): Promise<void> {
   const input: RunCreateInput = {
     source: 'slack',
@@ -56,7 +70,7 @@ async function run(channelId: string): Promise<void> {
   let timelineTs: string | undefined;
   let reportPrompted = false;
   let dispatchPrompted = false;
-  const unsub = subscribe(runId, async (ev) => {
+  await mirrorEventsUntilTerminal(runId, async (ev) => {
     if (!timelineTs) {
       const m = await postMessage({ channel: root.channel, thread_ts: root.ts, text: ev.title, blocks: blocksForEvent(ev) });
       timelineTs = m.ts;
@@ -79,7 +93,6 @@ async function run(channelId: string): Promise<void> {
     if (ev.status === 'shipped') {
       const prUrl = ev.url ?? (ev.payload?.prUrl as string | undefined);
       if (prUrl) await postMessage({ channel: root.channel, thread_ts: root.ts, text: 'PR opened', blocks: blocksForEvent(ev) });
-      unsub();
     }
   });
 }

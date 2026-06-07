@@ -13,6 +13,8 @@ interface MockRun {
   mediaCount: number;
 }
 
+type RunEventHandler = (e: RunEvent) => void | Promise<void>;
+
 const runs = new Map<string, MockRun>();
 let counter = 0;
 
@@ -91,16 +93,30 @@ export async function getDiagnosis(
 // --- event stream ---
 const listeners = new Map<string, Set<(e: RunEvent) => void>>();
 
-export function subscribe(runId: string, onEvent: (e: RunEvent) => void): () => void {
+export function subscribe(runId: string, onEvent: RunEventHandler): () => void {
   const set = listeners.get(runId) ?? new Set();
   set.add(onEvent);
   listeners.set(runId, set);
   return () => set.delete(onEvent);
 }
 
+/**
+ * Registers a mock event listener without holding local development requests open.
+ *
+ * @param runId Reflex run ID.
+ * @param onEvent Callback invoked for each emitted mock run event.
+ * @returns Resolved promise after listener registration.
+ * @sideEffects Adds a listener to the in-memory mock event bus.
+ */
+export async function mirrorEventsUntilTerminal(runId: string, onEvent: RunEventHandler): Promise<void> {
+  subscribe(runId, onEvent);
+}
+
 function emit(runId: string, partial: Omit<RunEvent, 'runId' | 'createdAt'>): void {
   const ev: RunEvent = { runId, createdAt: new Date().toISOString(), ...partial };
-  listeners.get(runId)?.forEach((fn) => fn(ev));
+  listeners.get(runId)?.forEach((fn) => {
+    void Promise.resolve(fn(ev));
+  });
 }
 
 function emitConfirmSequence(runId: string): void {
