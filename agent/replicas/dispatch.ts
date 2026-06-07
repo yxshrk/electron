@@ -1,7 +1,7 @@
 import { createReplicasTask } from './client';
 import { buildReplicasPrompt, buildReplicasTaskName, buildReplicasTaskTitle } from './prompt';
-import { runScriptedFallback } from './scripted-fallback';
-import type { DispatchInput, DispatchResult } from './types';
+import { runScriptedFallback, runScriptedFallbackViaGitHub } from './scripted-fallback';
+import type { DispatchInput, DispatchResult, ScriptedFallbackRun } from './types';
 
 export interface DispatchOptions {
   createPr?: boolean;
@@ -25,7 +25,7 @@ export async function dispatchConfirmedHypothesis(
   const taskTitle = buildReplicasTaskTitle(input);
 
   if (options.preferScriptedFallback || !process.env.REPLICAS_API_KEY) {
-    const fallback = runScriptedFallback(input, { createPr: options.createPr });
+    const fallback = await runScriptedFallbackForRuntime(input, options);
 
     return {
       provider: 'scripted',
@@ -47,4 +47,32 @@ export async function dispatchConfirmedHypothesis(
     prompt,
     replicasTask
   };
+}
+
+/**
+ * Runs the scripted fallback through the runtime-appropriate PR creator.
+ *
+ * @param input Confirmed dispatch input from diagnosis.
+ * @param options Dispatch behavior controls.
+ * @returns Scripted fallback result with optional PR evidence.
+ * @sideEffects May create a local git PR in dev or a GitHub API PR in serverless deployment.
+ */
+async function runScriptedFallbackForRuntime(
+  input: DispatchInput,
+  options: DispatchOptions
+): Promise<ScriptedFallbackRun> {
+  if (options.createPr && shouldUseGitHubApiScriptedFallback()) {
+    return runScriptedFallbackViaGitHub(input);
+  }
+  return runScriptedFallback(input, { createPr: options.createPr });
+}
+
+/**
+ * Checks whether scripted fallback PR creation should avoid local `git`/`gh`.
+ *
+ * @returns True on Vercel or when explicitly requested by environment.
+ * @sideEffects Reads deployment environment variables.
+ */
+function shouldUseGitHubApiScriptedFallback(): boolean {
+  return process.env.VERCEL === '1' || process.env.REFLEX_SCRIPTED_PR_PROVIDER === 'github-api';
 }
