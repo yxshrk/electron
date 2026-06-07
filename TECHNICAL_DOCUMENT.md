@@ -945,6 +945,7 @@ Request:
   "screenshotUrl": "https://...",
   "slackChannelId": "C123",
   "slackThreadTs": null,
+  "slackUserId": "U123",
   "contextWindow": {
     "messageLimit": 100,
     "attachments": 3,
@@ -1983,7 +1984,8 @@ Laurence to Yash:
     }
   ],
   "slackChannelId": "C123",
-  "slackThreadTs": null
+  "slackThreadTs": null,
+  "slackUserId": "U123"
 }
 ```
 

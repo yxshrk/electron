@@ -5,10 +5,12 @@ export interface DashboardRun extends ReflexRunRow {
   summary?: string;
   media_count?: number;
   chat_message_count?: number;
+  observation_count?: number;
   hypothesis_count?: number;
   diagnosis_state?: 'not_started' | 'diagnosed';
   pr_url?: string | null;
   pr_summary?: string | null;
+  started_by?: string | null;
 }
 
 export interface DashboardRunEvent {
@@ -17,6 +19,7 @@ export interface DashboardRunEvent {
   status: string | null;
   title: string;
   detail: string;
+  actor: string | null;
   created_at: string;
 }
 
@@ -154,10 +157,12 @@ const demoRun: DashboardRun = {
   summary: 'Report export hangs on large datasets',
   media_count: 2,
   chat_message_count: 3,
+  observation_count: 1,
   hypothesis_count: 3,
   diagnosis_state: 'diagnosed',
   pr_url: 'https://github.com/yxshrk/electron/pull/10',
-  pr_summary: 'Batched exporter with reproduction proof'
+  pr_summary: 'Batched exporter with reproduction proof',
+  started_by: 'U_CSM'
 };
 
 /**
@@ -220,7 +225,7 @@ export async function getDashboardRunDetail(runId: string): Promise<DashboardRun
 
     return {
       source: 'insforge',
-      run,
+      run: { ...run, started_by: startedByFromEvents(events.filter((event) => event.event_type === 'run.created')) },
       events,
       chatHistory,
       mediaArtifacts,
@@ -249,12 +254,17 @@ async function enrichRunSummaries(runs: DashboardRun[]): Promise<DashboardRun[]>
   if (runs.length === 0) return [];
   const runFilter = `run_id=in.${inList(runs.map((run) => run.id))}`;
 
-  const [diagnoses, briefs, media, chatHistory, pullRequests] = await Promise.all([
+  const [diagnoses, briefs, media, chatHistory, observations, pullRequests, createdEvents] = await Promise.all([
     dbSelect<RunScoped<DashboardDiagnosis>>('diagnoses', `${runFilter}&order=created_at.desc`),
     dbSelect<RunScoped<DashboardBugBrief>>('bug_briefs', `${runFilter}&order=created_at.desc`),
     dbSelect<{ id: string; run_id: string }>('media_artifacts', `${runFilter}&select=id,run_id`),
     dbSelect<{ id: string; run_id: string }>('slack_context_messages', `${runFilter}&select=id,run_id`),
-    dbSelect<RunScoped<DashboardPullRequest>>('pull_requests', `${runFilter}&order=created_at.desc`)
+    dbSelect<{ id: string; run_id: string }>('observations', `${runFilter}&select=id,run_id`),
+    dbSelect<RunScoped<DashboardPullRequest>>('pull_requests', `${runFilter}&order=created_at.desc`),
+    dbSelect<RunScoped<{ actor: string | null }>>(
+      'run_events',
+      `${runFilter}&event_type=eq.run.created&order=created_at.asc&select=run_id,actor`
+    )
   ]);
 
   const latestDiagnosisByRun = firstByRunId(diagnoses);
@@ -270,21 +280,37 @@ async function enrichRunSummaries(runs: DashboardRun[]): Promise<DashboardRun[]>
   const hypothesisCountByDiagnosis = countBy(hypotheses, (hypothesis) => hypothesis.diagnosis_id);
   const mediaCountByRun = countBy(media, (artifact) => artifact.run_id);
   const chatCountByRun = countBy(chatHistory, (message) => message.run_id);
+  const observationCountByRun = countBy(observations, (observation) => observation.run_id);
+  const createdEventByRun = firstByRunId(createdEvents);
 
   return runs.map((run) => {
     const diagnosis = latestDiagnosisByRun.get(run.id);
     const pr = latestPullRequestByRun.get(run.id);
+    const createdEvent = createdEventByRun.get(run.id);
     return {
       ...run,
       summary: summarizeRun(run, diagnosis, latestBriefByRun.get(run.id)),
       media_count: mediaCountByRun.get(run.id) ?? 0,
       chat_message_count: chatCountByRun.get(run.id) ?? 0,
+      observation_count: observationCountByRun.get(run.id) ?? 0,
       hypothesis_count: diagnosis ? hypothesisCountByDiagnosis.get(diagnosis.id) ?? 0 : 0,
       diagnosis_state: diagnosis ? 'diagnosed' : 'not_started',
       pr_url: pr?.github_url ?? null,
-      pr_summary: pr?.summary ?? null
+      pr_summary: pr?.summary ?? null,
+      started_by: startedByFromEvents(createdEvent ? [createdEvent] : [])
     };
   });
+}
+
+/**
+ * Reads the starter actor from the initial run event.
+ *
+ * @param events Run events already sorted with the first `run.created` event earliest.
+ * @returns Slack user ID or source actor when available.
+ * @sideEffects None.
+ */
+function startedByFromEvents(events: Array<{ actor: string | null }>): string | null {
+  return events.find((event) => Boolean(event.actor?.trim()))?.actor ?? null;
 }
 
 /**
@@ -581,6 +607,7 @@ function event(
     status,
     title,
     detail,
+    actor: 'U_CSM',
     created_at: new Date(Date.parse(DEMO_CREATED_AT) + offsetSeconds * 1000).toISOString()
   };
 }

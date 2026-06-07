@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     attachments: 3,
     maxPromptChars: 6000,
   };
+  const actor = runActor(body.slackUserId, source);
 
   const run = await dbInsert<ReflexRunRow>("reflex_runs", {
     run_key: shortKey("run"),
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     status: "created",
     title: `Run created (${mode} mode)`,
     detail: `role=${role} repo=${repoUrl}`,
-    actor: source,
+    actor,
   });
 
   const origin = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin;
@@ -72,4 +73,17 @@ export async function POST(req: NextRequest) {
  */
 export async function GET() {
   return NextResponse.json(await getDashboardRuns());
+}
+
+/**
+ * Chooses the actor recorded on the initial run event.
+ *
+ * @param slackUserId Slack slash-command user ID when the run came from Slack.
+ * @param source Run source used as the fallback actor.
+ * @returns Stable actor string for timeline and dashboard ownership.
+ * @sideEffects None.
+ */
+function runActor(slackUserId: string | undefined, source: RunSource): string {
+  const trimmed = slackUserId?.trim();
+  return trimmed || source;
 }

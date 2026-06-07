@@ -7,7 +7,7 @@ import {
   type DashboardObservation,
   type DashboardRunEvent
 } from '@/lib/dashboard/read-model';
-import { formatDate, PIPELINE_STAGES, prettyJson, stageState, statusLabel, statusTone } from '@/lib/dashboard/view';
+import { actorLabel, formatDate, PIPELINE_STAGES, prettyJson, stageState, statusLabel, statusTone } from '@/lib/dashboard/view';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,7 +56,7 @@ export default async function RunDetail({ params }: { params: { runId: string } 
           <h1>{pageTitle}</h1>
           <p className="muted">
             {run.run_key} · <span className="pill">{run.mode}</span> {run.role} ·{' '}
-            {run.repo_url.replace('https://github.com/', '')}
+            {run.repo_url.replace('https://github.com/', '')} · owner {actorLabel(run.started_by)}
           </p>
         </div>
         <div className="title-actions">
@@ -405,7 +405,10 @@ function Timeline({ events }: { events: DashboardRunEvent[] }) {
             {event.status && <span className={`status-pill ${statusTone(event.status)}`}>{statusLabel(event.status)}</span>}
           </div>
           {event.detail && <div className="muted">{event.detail}</div>}
-          <div className="t">{event.event_type} · {formatDate(event.created_at)}</div>
+          <div className="t">
+            {event.event_type} · {formatDate(event.created_at)}
+            {event.actor && <> · {actorLabel(event.actor)}</>}
+          </div>
         </li>
       ))}
     </ul>

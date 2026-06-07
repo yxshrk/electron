@@ -33,8 +33,9 @@ export async function POST(req: Request): Promise<Response> {
   const form = new URLSearchParams(rawBody);
   const channelId = form.get('channel_id') ?? '';
   const commandText = form.get('text') ?? '';
+  const userId = form.get('user_id') ?? undefined;
 
-  background(run(channelId, commandText));
+  background(run(channelId, commandText, userId));
 
   return Response.json({ response_type: 'ephemeral', text: '🟡 Reflex (report) is gathering context…' });
 }
@@ -44,10 +45,11 @@ export async function POST(req: Request): Promise<Response> {
  *
  * @param channelId Slack channel ID where the command was invoked.
  * @param commandText Slash command text used as the seed report.
+ * @param userId Slack user ID that started the command.
  * @returns Nothing after the run reaches a terminal status or the event mirror times out.
  * @sideEffects Creates a Reflex run, stores Slack context, posts the report card, and updates Slack.
  */
-async function run(channelId: string, commandText: string): Promise<void> {
+async function run(channelId: string, commandText: string, userId?: string): Promise<void> {
   const input: RunCreateInput = {
     source: 'slack',
     mode: 'bug',
@@ -56,6 +58,7 @@ async function run(channelId: string, commandText: string): Promise<void> {
     commandText: commandText || undefined,
     slackChannelId: channelId,
     slackThreadTs: null,
+    slackUserId: userId,
     contextWindow: DEFAULT_CONTEXT_WINDOW,
   };
 

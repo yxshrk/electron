@@ -1,6 +1,5 @@
 import { getDashboardRuns } from '@/lib/dashboard/read-model';
-import type { DashboardRun } from '@/lib/dashboard/read-model';
-import { formatDate, statusLabel, statusTone } from '@/lib/dashboard/view';
+import { actorLabel, evidenceLabel, evidenceTotalCount, formatDate, statusLabel, statusTone } from '@/lib/dashboard/view';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,7 +13,7 @@ export const runtime = 'nodejs';
 export default async function Dashboard() {
   const { runs, source, error } = await getDashboardRuns();
   const diagnosedRuns = runs.filter((run) => run.diagnosis_state === 'diagnosed').length;
-  const evidenceCount = runs.reduce((total, run) => total + (run.media_count ?? 0) + (run.chat_message_count ?? 0), 0);
+  const evidenceCount = runs.reduce((total, run) => total + evidenceTotalCount(run), 0);
   const prCount = runs.filter((run) => Boolean(run.pr_url)).length;
 
   return (
@@ -46,7 +45,7 @@ export default async function Dashboard() {
         <div className="metric-card">
           <span className="metric-label">Evidence items</span>
           <strong>{evidenceCount}</strong>
-          <span className="metric-note">chat + media</span>
+          <span className="metric-note">chat + media + debug</span>
         </div>
         <div className="metric-card">
           <span className="metric-label">PRs</span>
@@ -79,6 +78,7 @@ export default async function Dashboard() {
               <thead>
                 <tr>
                   <th>Diagnosis</th>
+                  <th>Owner</th>
                   <th>Status</th>
                   <th>Source</th>
                   <th>Evidence</th>
@@ -96,11 +96,13 @@ export default async function Dashboard() {
                         <span>{run.run_key} · {run.repo_url.replace('https://github.com/', '')}</span>
                       </a>
                     </td>
+                    <td><span className="owner-pill">{actorLabel(run.started_by)}</span></td>
                     <td><span className={`status-pill ${statusTone(run.status)}`}>{statusLabel(run.status)}</span></td>
                     <td>
-                      <div className="stacked-cell">
-                        <span>{run.source}</span>
-                        <span className="muted">{run.mode} · {run.role}</span>
+                      <div className="badge-row">
+                        <span className="pill">{run.source}</span>
+                        <span className="pill">{run.mode}</span>
+                        <span className="pill">{run.role}</span>
                       </div>
                     </td>
                     <td>{evidenceLabel(run)}</td>
@@ -116,18 +118,4 @@ export default async function Dashboard() {
       </section>
     </>
   );
-}
-
-/**
- * Formats a compact evidence count for the run overview.
- *
- * @param run Dashboard run row enriched with evidence counters.
- * @returns Human-readable chat/media count.
- * @sideEffects None.
- */
-function evidenceLabel(run: DashboardRun): string {
-  const chat = run.chat_message_count ?? 0;
-  const media = run.media_count ?? 0;
-  if (chat === 0 && media === 0) return '0';
-  return `${chat} chat / ${media} media`;
 }

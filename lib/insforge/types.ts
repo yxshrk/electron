@@ -49,6 +49,7 @@ export interface RunCreateInput {
   commandText?: string;
   slackChannelId?: string;
   slackThreadTs?: string | null;
+  slackUserId?: string;
   contextWindow?: {
     messageLimit: number;
     attachments: number;
