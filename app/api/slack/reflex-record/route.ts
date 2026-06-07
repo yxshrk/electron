@@ -33,8 +33,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const form = new URLSearchParams(rawBody);
   const channelId = form.get('channel_id') ?? '';
+  const userId = form.get('user_id') ?? undefined;
 
-  background(run(channelId));
+  background(run(channelId, userId));
 
   return Response.json({ response_type: 'ephemeral', text: '🎥 Reflex (record) — opening a recorder for you…' });
 }
@@ -43,10 +44,11 @@ export async function POST(req: Request): Promise<Response> {
  * Creates the recording run and mirrors run events into its Slack thread.
  *
  * @param channelId Slack channel ID where the command was invoked.
+ * @param userId Slack user ID that started the command.
  * @returns Nothing after the run reaches a terminal status or the event mirror times out.
  * @sideEffects Creates a Reflex run, posts a recorder card, and posts/updates Slack thread messages.
  */
-async function run(channelId: string): Promise<void> {
+async function run(channelId: string, userId?: string): Promise<void> {
   const input: RunCreateInput = {
     source: 'slack',
     mode: 'debug',
@@ -54,6 +56,7 @@ async function run(channelId: string): Promise<void> {
     repoUrl: DEFAULT_REPO,
     slackChannelId: channelId,
     slackThreadTs: null,
+    slackUserId: userId,
     contextWindow: DEFAULT_CONTEXT_WINDOW,
   };
 

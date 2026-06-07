@@ -89,6 +89,7 @@ interface RunCreateInput {
   commandText?: string;
   slackChannelId?: string;
   slackThreadTs?: string | null;
+  slackUserId?: string;
   contextWindow: {
     messageLimit: number;      // MVP default: 100
     attachments: number;       // MVP default: 3

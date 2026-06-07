@@ -67,6 +67,52 @@ export function prettyJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
+export interface EvidenceCountSource {
+  chat_message_count?: number;
+  media_count?: number;
+  observation_count?: number;
+}
+
+/**
+ * Counts all evidence-like items shown in the dashboard overview.
+ *
+ * @param source Run evidence counters from the dashboard read model.
+ * @returns Total chat messages, media artifacts, and recorder observations.
+ * @sideEffects None.
+ */
+export function evidenceTotalCount(source: EvidenceCountSource): number {
+  return (source.chat_message_count ?? 0) + (source.media_count ?? 0) + (source.observation_count ?? 0);
+}
+
+/**
+ * Formats a compact evidence summary for a run row.
+ *
+ * @param source Run evidence counters from the dashboard read model.
+ * @returns Human-readable evidence count string.
+ * @sideEffects None.
+ */
+export function evidenceLabel(source: EvidenceCountSource): string {
+  const chat = source.chat_message_count ?? 0;
+  const media = source.media_count ?? 0;
+  const observations = source.observation_count ?? 0;
+  if (chat === 0 && media === 0 && observations === 0) return '0';
+  return `${chat} chat / ${media} media / ${observations} debug`;
+}
+
+/**
+ * Formats the run starter for table display.
+ *
+ * @param actor Stored run actor, usually a Slack user ID.
+ * @returns Compact owner label for the dashboard.
+ * @sideEffects None.
+ */
+export function actorLabel(actor?: string | null): string {
+  const value = actor?.trim();
+  if (!value) return 'unknown';
+  if (/^U[A-Z0-9]+$/i.test(value)) return `Slack ${value}`;
+  return value;
+}
+
 /**
  * Determines whether a pipeline stage is complete, active, or pending.
  *

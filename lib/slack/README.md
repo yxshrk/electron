@@ -28,7 +28,7 @@ Routes: `app/api/slack/{reflex-report,reflex-record,events,interactions}/route.t
 IDs: `runId`. Status: created→context_stored→clarifying→report_drafted→package_confirmed→diagnosed→dispatched→reproduced→fixed→shipped.
 
 ## Confirmed wire shapes (matched to Yash PR #8, not the §8 doc)
-- `POST /api/runs` ← `RunCreateInput` (source, mode, role, repoUrl, commandText?, slackChannelId?, slackThreadTs?, contextWindow?)
+- `POST /api/runs` ← `RunCreateInput` (source, mode, role, repoUrl, commandText?, slackChannelId?, slackThreadTs?, slackUserId?, contextWindow?)
 - `POST /api/runs/{runId}/context` ← `{ messages:[{ ts, userId, text, permalink, hasFiles }] }` — **his route reads `ts`/`userId`** (the §8 doc's `slackMessageTs` is wrong); messages-only
 - `POST /api/runs/{runId}/media` ← one file, `storageUrl` **required**; kinds = `screenshot|video|screen_recording|audio_recording|transcript|log|other`
 - `POST /api/runs/{runId}/draft-bug-brief` → `ReportDraft` (body ignored; reads stored observation)
